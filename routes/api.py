@@ -1574,6 +1574,65 @@ def disconnect_telegram():
     return {"status": "success", "message": "Telegram disconnected"}
 
 
+# ── Telegram channel POSTING (Posts-module broadcast target) ─────
+# Distinct from notifications above: this publishes your composed Posts to a
+# channel the bot administers. Bot token defaults to the notification bot's.
+
+@router.get("/settings/telegram/channel")
+def get_telegram_channel():
+    """Channel-posting config for the settings form (never returns the token)."""
+    settings = config.get_settings()
+    own = settings.get("tg_bot_token", "")
+    return {
+        "channel": settings.get("tg_channel", ""),
+        "has_own_token": bool(own),
+        "uses_notification_bot": (not own) and bool(settings.get("telegram_bot_token")),
+        "configured": bool(settings.get("tg_channel")
+                           and (own or settings.get("telegram_bot_token"))),
+    }
+
+
+@router.post("/settings/telegram/channel")
+def save_telegram_channel(body: dict):
+    """Save the target channel + optional posting-specific bot token. A blank
+    token keeps the stored one (and falls back to the notification bot); the
+    channel is normalised loosely (@name / name / t.me link all accepted)."""
+    update = {}
+    if "channel" in body:
+        update["tg_channel"] = str(body.get("channel") or "").strip()
+    if body.get("bot_token"):
+        update["tg_bot_token"] = str(body["bot_token"]).strip()
+    config.save_settings(update)
+    return {"status": "saved", "channel": config.get_settings().get("tg_channel", "")}
+
+
+@router.post("/settings/telegram/channel/test")
+async def test_telegram_channel(body: dict | None = None):
+    """Validate the channel: getChat via the resolved bot token, then send a test
+    message so the user sees it actually lands. Uses the just-typed channel if
+    provided, else the saved one."""
+    settings = config.get_settings()
+    channel = ((body or {}).get("channel") or settings.get("tg_channel") or "").strip()
+    token = settings.get("tg_bot_token", "") or settings.get("telegram_bot_token", "")
+    if not token:
+        raise HTTPException(400, "No bot token — connect Telegram first, or add a posting bot token")
+    if not channel:
+        raise HTTPException(400, "No channel set")
+    from clients.tg.client import TgClient
+    client = TgClient(bot_token=token, channel=channel)
+    err = await client.validate()
+    if err:
+        raise HTTPException(400, f"Channel check failed: {err}")
+    try:
+        r = await client.create_post("✅ PawPoller is connected to this channel.")
+    except Exception as e:
+        raise HTTPException(400, f"Test post failed: {e}")
+    if not r:
+        raise HTTPException(400, "Telegram accepted the channel but the test post didn't send "
+                                 "(is the bot an admin with post rights?)")
+    return {"status": "success", "message": "Test message posted to the channel", "url": r.get("url", "")}
+
+
 @router.get("/settings/telegram/features")
 def get_telegram_features():
     """Return Telegram notification feature toggles."""

@@ -12,6 +12,34 @@ popup, which is usually the wrong thing to show — so write the blockquote.
 
 ---
 
+## [2.198.0] - 2026-07-31 - Post to a Telegram channel
+
+> **Broadcast your Posts to a Telegram channel.** Telegram is now a target in the Posts composer, alongside Bluesky,
+> Mastodon, X and the rest — text or images, straight to a channel you run. Set it up in Settings → Telegram → Channel
+> posting: create a channel, add your bot as an admin, paste the channel's @username, and hit "Save & send test". It
+> reuses your existing notification bot by default, so if Telegram alerts already work you're one step from posting.
+> NSFW posts are sent with a tap-to-reveal blur.
+
+Fifth deterministic (no-AI) roadmap item. Telegram is a *post-only broadcast* target, so it lives in the Posts module
+(where bsky/mast/thr/tw/tum/ig already are) rather than the pollable-platform registry — no fake dashboard, no stats to
+poll. A nice bonus over IG/Threads: the bot uploads images directly, so no public image host is needed.
+
+- **New `clients/tg/client.py` `TgClient`** — Bot API poster: text → `sendMessage`, one image → `sendPhoto` (caption,
+  optional `has_spoiler` for NSFW), 2–10 images → `sendMediaGroup`. Normalises the channel (`@name` / `name` / `t.me`
+  link / numeric `-100…` id) and builds a `t.me` permalink for public channels. `validate()` (getChat) backs the test button.
+- **`post_publisher`** — `tg` added to `SUPPORTED` + a branch in `_publish_one`: resolves `tg_bot_token` (falling back to
+  the notification `telegram_bot_token`) + `tg_channel`, sends, returns the message id + url. Publishing flows through the
+  existing `POST /api/posts/{id}/publish` unchanged.
+- **API:** `GET/POST /api/settings/telegram/channel` (save channel + optional posting bot token; token vaulted, blank =
+  keep) and `POST /api/settings/telegram/channel/test` (getChat + a real test post).
+- **Config:** `tg` added to `PLATFORM_CREDENTIAL_FIELDS` (`tg_bot_token` vaulted, `tg_channel` plaintext identity).
+- **Frontend:** Telegram is a target in the Posts composer (`posts.js` `_PLATFORMS`/`_IMAGE_PLATFORMS` + a post-only
+  label/emoji override, since it's not in `window.PLATFORMS`); a **Channel posting** panel in Settings → Telegram
+  (channel + optional bot token + Save / Save & send test). `API.getTelegramChannel`/`saveTelegramChannel`/`testTelegramChannel`.
+
+**Tests:** `tests/test_tg_posting.py` (7) — text/1-image/N-image dispatch, channel normalisation, the public-URL rule,
+the require-token/channel guard, and `tg` being in `SUPPORTED`. Network faked.
+
 ## [2.197.0] - 2026-07-31 - Tag performance analytics
 
 > **See which of your tags actually pull views.** The Analytics page has a new **Tag performance** table: for every

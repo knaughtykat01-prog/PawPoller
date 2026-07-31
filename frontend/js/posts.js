@@ -11,11 +11,16 @@ window.Posts = {
     /* Microblog platforms the module can post to. Bluesky, Mastodon and X post
      * images (up to 4); Threads/Tumblr are text-only for now; Instagram is the
      * opposite — it REQUIRES a photo (no text-only IG post). */
-    _PLATFORMS: ['bsky', 'mast', 'thr', 'tum', 'tw', 'ig'],
+    _PLATFORMS: ['bsky', 'mast', 'thr', 'tum', 'tw', 'ig', 'tg'],
     /* Ticked by default — the rest need their posting creds set up first. */
     _DEFAULT_CHECKED: ['bsky', 'mast'],
     /* Platforms that accept image attachments (the rest keep the "text" badge). */
-    _IMAGE_PLATFORMS: ['bsky', 'mast', 'tw', 'ig'],
+    _IMAGE_PLATFORMS: ['bsky', 'mast', 'tw', 'ig', 'tg'],
+    /* Post-only broadcast targets that aren't in the pollable window.PLATFORMS
+     * registry — give _plat() their label/emoji so compose renders them nicely. */
+    _POST_ONLY_META: {
+        tg: { code: 'tg', label: 'Telegram', emoji: '\u{1F4E3}', color: '#2AABEE' },
+    },
     /* Platforms that REQUIRE an image — Instagram has no text-only feed post. */
     _IMAGE_REQUIRED: ['ig'],
 
@@ -51,6 +56,7 @@ window.Posts = {
 
     _plat(code) {
         return (window.PLATFORMS || []).find(p => p.code === code)
+            || this._POST_ONLY_META[code]
             || { code, label: code, emoji: '', color: '#888' };
     },
 

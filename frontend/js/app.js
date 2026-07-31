@@ -9590,7 +9590,7 @@ const App = {
         try {
             // Core settings: only fetch what General/Platforms/Telegram/Data/About tabs need.
             // Polling tab data is loaded lazily when the user clicks into it.
-            const [creds, prefs, telegram, tgFeatures, pollPausedState, faAuth, wsAuth, sfAuth, sqwAuth, ao3Auth, daAuth, wpAuth, ikAuth, bskyAuth, twAuth, mastAuth, tumAuth, pixAuth, thrAuth, igAuth, e621Auth, updateInfo, postingSettings, browserLoginInfo, setupStatus, digest] = await Promise.all([
+            const [creds, prefs, telegram, tgFeatures, pollPausedState, faAuth, wsAuth, sfAuth, sqwAuth, ao3Auth, daAuth, wpAuth, ikAuth, bskyAuth, twAuth, mastAuth, tumAuth, pixAuth, thrAuth, igAuth, e621Auth, updateInfo, postingSettings, browserLoginInfo, setupStatus, digest, tgChannel] = await Promise.all([
                 API.getCredentials(),
                 API.getPreferences(),
                 API.getTelegram(),
@@ -9617,6 +9617,7 @@ const App = {
                 API.getBrowserLoginPlatforms().catch(() => ({ available: false, platforms: [] })),
                 API.getSetupStatus().catch(() => ({ runtime_mode: 'desktop', setup_mode: null, polling_owner: 'local' })),
                 API.getDigestStatus().catch(() => ({ enabled: false, interval_days: 7, recipients: [], recipients_raw: '', smtp_host: 'smtp.gmail.com', smtp_port: 587, smtp_username: '', smtp_from: '', smtp_use_tls: true, has_password: false, last_sent_at: null })),
+                API.getTelegramChannel().catch(() => ({ channel: '', has_own_token: false, uses_notification_bot: false, configured: false })),
             ]);
 
             // Resolve effective mode for hide/show logic. Falls back to inferred
@@ -10709,6 +10710,29 @@ const App = {
                     </div>
                     <div id="telegram-msg" style="font-size:13px;margin-top:8px"></div>
                     `}
+                </div>
+
+                <div class="settings-section">
+                    <h3>Channel posting</h3>
+                    <p style="font-size:13px;color:var(--text-muted);margin-bottom:12px;max-width:64ch">
+                        Broadcast your <strong>Posts</strong> to a Telegram channel (text + images). Create a channel,
+                        add your bot as an <strong>admin</strong> with post rights, then put the channel's
+                        <code>@username</code> below. Uses your notification bot${tgChannel.has_own_token ? '' : ' by default'} —
+                        or set a separate posting bot token.
+                    </p>
+                    <div class="settings-row" style="flex-direction:column;align-items:stretch;gap:6px">
+                        <label style="font-size:13px;color:var(--text-muted)">Channel</label>
+                        <input type="text" id="tgchan-channel" class="search-input" value="${Utils.escapeHtml(tgChannel.channel || '')}" placeholder="@yourchannel" style="max-width:300px">
+                    </div>
+                    <div class="settings-row" style="flex-direction:column;align-items:stretch;gap:6px;margin-top:8px">
+                        <label style="font-size:13px;color:var(--text-muted)">Posting bot token ${tgChannel.has_own_token ? '(saved — leave blank to keep)' : '(optional — blank reuses your notification bot)'}</label>
+                        <input type="password" id="tgchan-token" class="search-input" placeholder="${tgChannel.has_own_token ? '********' : '123456:ABC-DEF…'}" style="max-width:300px" autocomplete="new-password">
+                    </div>
+                    <div style="margin-top:14px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+                        <button class="btn btn-primary" id="tgchan-save">Save</button>
+                        <button class="btn btn-secondary" id="tgchan-test">Save &amp; send test</button>
+                        <span id="tgchan-msg" style="font-size:13px"></span>
+                    </div>
                 </div>
 
                 </div><!-- /tab:telegram -->
@@ -12281,6 +12305,51 @@ const App = {
                 const digestPreviewBtn = document.getElementById('digest-preview-btn');
                 digestPreviewBtn.addEventListener('click', () => {
                     window.open('/api/digest/preview', '_blank');
+                });
+            }
+
+            // ── Telegram channel posting ──────────────────────────────
+            const tgchanSave = document.getElementById('tgchan-save');
+            if (tgchanSave) {
+                const tgMsg = () => document.getElementById('tgchan-msg');
+                const collectTg = () => {
+                    const payload = { channel: document.getElementById('tgchan-channel').value.trim() };
+                    const tok = document.getElementById('tgchan-token').value;
+                    if (tok) payload.bot_token = tok;   // blank = keep existing
+                    return payload;
+                };
+                tgchanSave.addEventListener('click', async () => {
+                    const msg = tgMsg();
+                    tgchanSave.disabled = true;
+                    try {
+                        await API.saveTelegramChannel(collectTg());
+                        document.getElementById('tgchan-token').value = '';
+                        msg.textContent = 'Saved.';
+                        msg.style.color = 'var(--success)';
+                    } catch (err) {
+                        msg.textContent = 'Failed: ' + err.message;
+                        msg.style.color = 'var(--danger)';
+                    }
+                    tgchanSave.disabled = false;
+                });
+                const tgchanTest = document.getElementById('tgchan-test');
+                tgchanTest.addEventListener('click', async () => {
+                    const msg = tgMsg();
+                    tgchanTest.disabled = true;
+                    tgchanTest.textContent = 'Testing…';
+                    msg.textContent = '';
+                    try {
+                        await API.saveTelegramChannel(collectTg());
+                        document.getElementById('tgchan-token').value = '';
+                        const res = await API.testTelegramChannel({ channel: document.getElementById('tgchan-channel').value.trim() });
+                        msg.textContent = res.message || 'Test posted.';
+                        msg.style.color = 'var(--success)';
+                    } catch (err) {
+                        msg.textContent = 'Failed: ' + err.message;
+                        msg.style.color = 'var(--danger)';
+                    }
+                    tgchanTest.textContent = 'Save & send test';
+                    tgchanTest.disabled = false;
                 });
             }
 

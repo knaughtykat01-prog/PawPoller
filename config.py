@@ -636,6 +636,9 @@ CREDENTIAL_FIELDS = frozenset({
     "dashboard_password", "dashboard_user",
     # Integrations
     "telegram_bot_token", "telegram_chat_id",
+    # Telegram channel posting (Posts module) — bot token is secret; the channel
+    # (@name) stays plaintext identity. Falls back to telegram_bot_token if unset.
+    "tg_bot_token",
     # Weekly email digest — SMTP app password (host/user/from/recipients stay
     # plaintext as non-secret config; only the password is vaulted).
     "smtp_password",
@@ -692,6 +695,8 @@ PLATFORM_CREDENTIAL_FIELDS = {
     "thr": ["thr_access_token", "thr_user_id"],
     "ig": ["ig_access_token", "ig_user_id"],
     "e621": ["e621_username", "e621_api_key"],
+    # Telegram channel (Posts-module broadcast target; post-only, not polled).
+    "tg": ["tg_bot_token", "tg_channel"],
 }
 
 # ── Proactive credential-age tracking (backlog W) ──────────────────
@@ -1071,7 +1076,7 @@ def merge_synced_settings(incoming: dict, client_timestamp: float | None = None)
 
 
 # ── App metadata ──
-APP_VERSION = "2.197.0"
+APP_VERSION = "2.198.0"
 
 # ── Inkbunny API settings ──
 INKBUNNY_API_BASE = "https://inkbunny.net"     # Inkbunny API root URL

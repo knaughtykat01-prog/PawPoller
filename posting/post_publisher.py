@@ -24,7 +24,7 @@ from database import posts_queries
 logger = logging.getLogger(__name__)
 
 # Platforms this module can post to.
-SUPPORTED = ("bsky", "mast", "thr", "tw", "tum", "ig")
+SUPPORTED = ("bsky", "mast", "thr", "tw", "tum", "ig", "tg")
 
 # These still post text only (image cross-posting needs per-platform work:
 # Threads wants a public image_url, Tumblr NPF). X gained image posting in 2.58.0.
@@ -315,6 +315,32 @@ async def _publish_one(post: dict, platform: str, account_id: int | None,
             finally:
                 for t in stashed:
                     ig_media.cleanup(t)
+
+        elif platform == "tg":
+            from clients.tg.client import TgClient
+            # Reuse the notification bot token if a posting-specific one isn't set,
+            # so a user who already connected Telegram for alerts only needs to add
+            # the channel + make the bot an admin of it.
+            s = settings or config.get_settings()
+            token = creds.get("tg_bot_token", "") or s.get("telegram_bot_token", "")
+            channel = creds.get("tg_channel", "")
+            if not token:
+                result["error"] = ("Telegram bot token isn't set — connect Telegram (Settings → "
+                                   "Telegram channel), or reuse your notification bot")
+                return result
+            if not channel:
+                result["error"] = "No Telegram channel set — add your @channel in the Telegram settings"
+                return result
+            client = TgClient(bot_token=token, channel=channel)
+            r = await client.create_post(
+                text, image_paths=image_paths,
+                spoiler=(rating in _SENSITIVE_RATINGS))
+            if r and r.get("id"):
+                result.update(success=True, external_id=r["id"],
+                              external_url=r.get("url", ""))
+            else:
+                result["error"] = ("Telegram rejected the post — check the bot is an admin of the "
+                                   "channel and the token/channel are correct (see logs)")
     except Exception as e:
         logger.error("Post publish to %s failed: %s", platform, e, exc_info=True)
         result["error"] = str(e)

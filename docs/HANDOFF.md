@@ -1,7 +1,20 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-07-31
-**Current version (master):** 2.197.0 — **Tag performance analytics.** Fourth deterministic (NO-AI) roadmap item.
+**Current version (master):** 2.198.0 — **Post to a Telegram channel.** Fifth deterministic (NO-AI) roadmap item.
+Telegram is a POST-ONLY broadcast target → it lives in the **Posts module** (with bsky/mast/thr/tw/tum/ig), NOT the
+pollable `window.PLATFORMS` registry (no dashboard/stats to poll). New `clients/tg/client.py` `TgClient`: `sendMessage`
+(text) / `sendPhoto` (1 img, `has_spoiler` for NSFW) / `sendMediaGroup` (2–10); normalises channel + builds `t.me`
+permalink. `post_publisher`: `tg` in `SUPPORTED` + `_publish_one` branch (resolves `tg_bot_token`, falls back to the
+notification `telegram_bot_token`, + `tg_channel`). Bot uploads images directly — no public host needed (unlike IG/thr).
+API: `GET/POST /api/settings/telegram/channel` + `/channel/test`. `tg` in `PLATFORM_CREDENTIAL_FIELDS`. Frontend: target
+in the Posts composer (`posts.js` `_POST_ONLY_META` override) + **Channel posting** panel in Settings → Telegram. +7
+tests. **Roadmap:** ✅ auto-backups, ✅ mislink auditor, ✅ repost radar, ✅ weekly digest, ✅ tag-perf analytics, ✅
+Telegram-channel posting · next: Reddit (own large project). **Art-audit tail = dead end:** 120 local imports have no
+polled platform post to link to (1/120 match); the user confirmed they're a local-only archive. Not pursuing; nothing
+junked/deleted (junk = reversible hide anyway — see the never-delete-art rule).
+
+**Prior — 2.197.0 — Tag performance analytics.** Fourth deterministic (NO-AI) roadmap item.
 `analytics_queries.get_tag_performance(conn, min_works=3, limit=40, platform=None)`: per submission table, takes the
 platform's median headline metric (`INSIGHT_PRIMARY`), scores each piece `metric/median`, attributes that ratio to each
 keyword; a tag's **index** = median of its ratios (>1 beats the platform's typical piece). Also raw reach/faves/works +

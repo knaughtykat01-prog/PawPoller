@@ -357,6 +357,10 @@ const API = {
     disconnectTelegram() { return this.post('/api/settings/telegram/disconnect'); },
     getTelegramFeatures() { return this.get('/api/settings/telegram/features'); },
     setTelegramFeatures(data) { return this.post('/api/settings/telegram/features', data); },
+    /* Telegram channel posting (Posts-module broadcast target). */
+    getTelegramChannel() { return this.get('/api/settings/telegram/channel'); },
+    saveTelegramChannel(data) { return this.post('/api/settings/telegram/channel', data); },
+    testTelegramChannel(data) { return this.post('/api/settings/telegram/channel/test', data || {}); },
     /* Weekly email digest (deterministic, templated — no AI). */
     getDigestStatus() { return this.get('/api/digest/status'); },
     saveDigestSettings(data) { return this.post('/api/digest/settings', data); },
