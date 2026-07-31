@@ -78,3 +78,28 @@ def test_norm_tag_merges_underscore_and_case():
     assert aq._norm_tag("Big_Muscle") == "big muscle"
     assert aq._norm_tag("  DubCon ") == "dubcon"
     assert aq._norm_tag("big_muscle") == aq._norm_tag("Big Muscle")
+
+
+def test_fa_faceted_machine_tags_excluded():
+    """FA auto-stamps u_/c_/t_/s_/g_ faceted atoms on every submission — they're
+    not artist tags and must never surface in the ranking."""
+    conn = get_connection()
+    try:
+        for sid in (1, 2, 3, 4):
+            conn.execute(
+                "INSERT INTO fa_submissions (submission_id, title, views, "
+                "favorites_count, comments_count, keywords) VALUES (?,?,?,?,?,?)",
+                (sid, f"F{sid}", 100, 5, 0,
+                 json.dumps(["u_kithetiger", "c_artwork_digital", "s_tiger",
+                             "t_general", "harness"])))
+        conn.commit()
+        tags = _by_tag(aq.get_tag_performance(conn, min_works=3))
+        assert "harness" in tags                 # a real artist tag survives
+        for machine in ("u kithetiger", "c artwork digital", "s tiger", "t general"):
+            assert machine not in tags
+        # _is_machine_tag is FA-scoped — the same shape on another platform stays.
+        assert aq._is_machine_tag("fa", "u_kithetiger") is True
+        assert aq._is_machine_tag("sf", "u_kithetiger") is False
+        assert aq._is_machine_tag("fa", "harness") is False
+    finally:
+        conn.close()

@@ -911,6 +911,21 @@ def _norm_tag(t: str) -> str:
     return t.strip().lower().replace("_", " ")
 
 
+def _is_machine_tag(code: str, raw: str) -> bool:
+    """True for a platform's auto-generated faceted keyword — not an
+    artist-chosen tag, so it must be excluded from tag performance.
+
+    FA stamps every submission's keywords with faceted atoms: ``u_<username>``
+    (uploader), ``c_<category>``, ``t_<type>``, ``s_<species>``, ``g_<gender>``.
+    They ride on every FA piece, so ``u_kithetiger`` would otherwise top the
+    "on your best work" list — meaningless as advice. Matched on the raw tag
+    (before underscore-folding). Rare real collateral like an FA ``t_rex`` tag
+    is an acceptable trade against the per-submission noise on every FA piece.
+    """
+    return (code == "fa" and len(raw) > 2 and raw[1] == "_"
+            and raw[0] in "uctsg")
+
+
 def get_tag_performance(conn: sqlite3.Connection, min_works: int = 3,
                         limit: int = 40, platform: str | None = None) -> dict:
     """Which tags correlate with better engagement across YOUR own posts.
@@ -958,7 +973,8 @@ def get_tag_performance(conn: sqlite3.Connection, min_works: int = 3,
             m = r["m"] or 0
             f = r["f"] or 0
             ratio = (m / med) if med and med > 0 else 0.0
-            norm = sorted({_norm_tag(t) for t in tags if t and t.strip()})
+            norm = sorted({_norm_tag(t) for t in tags
+                           if t and t.strip() and not _is_machine_tag(code, t)})
             for t in norm:
                 a = tag_agg[t]
                 a["works"] += 1

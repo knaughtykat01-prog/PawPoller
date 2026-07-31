@@ -29,12 +29,15 @@ that submission's stats — no model, nothing new to store.
   typical piece). Also aggregates raw reach + faves + work-count, and the best-performing tag **pairs** (bounded to rows
   with ≤25 tags so one mega-tagged piece can't emit thousands of pairs). Tags are normalised with `_norm_tag`
   (lowercase + underscores→spaces) so FA's `big_muscle` and SoFurry's `big muscle` merge. `min_works` is the noise floor.
+  FA's auto-generated faceted machine-tags (`u_<user>` / `c_<category>` / `t_<type>` / `s_<species>` / `g_<gender>`,
+  stamped on every FA submission) are excluded via `_is_machine_tag` — otherwise `u_kithetiger` would ride on every piece
+  and dominate the pairs.
 - **`GET /api/analytics/tag-performance?min_works=3&limit=40&platform=`** (`routes/api.py`).
 - **Frontend:** a **Tag performance** section on `#/analytics` (`_tagPerfHtml`) — top tags (tag, index badge, works, avg
   reach, faves) + a **Best combinations** table. Index ≥1.15 shows green, <0.85 muted. `API.getTagPerformance`.
 
-**Tests:** `tests/test_tag_performance.py` (4) — index ranks over/under-performers correctly, `min_works` is the noise
-floor, platform scoping works, and `_norm_tag` merges underscore/case variants.
+**Tests:** `tests/test_tag_performance.py` (5) — index ranks over/under-performers correctly, `min_works` is the noise
+floor, platform scoping works, `_norm_tag` merges underscore/case variants, and FA's faceted machine-tags are excluded.
 
 ## [2.196.0] - 2026-07-31 - Weekly digest email
 
