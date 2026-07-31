@@ -245,6 +245,7 @@ def _start_poll_orchestrator():
         from polling.thr_poller import run_thr_poll_cycle
         from polling.ig_poller import run_ig_poll_cycle
         from polling.e621_poller import run_e621_poll_cycle
+        from polling.fn_poller import run_fn_poll_cycle
 
         settings = config.get_settings()
         from polling.notifications import describe_error
@@ -263,7 +264,7 @@ def _start_poll_orchestrator():
                          "ao3": run_ao3_poll_cycle, "mast": run_mast_poll_cycle,
                          "tum": run_tum_poll_cycle, "pix": run_pix_poll_cycle,
                          "thr": run_thr_poll_cycle, "ig": run_ig_poll_cycle,
-                         "e621": run_e621_poll_cycle}
+                         "e621": run_e621_poll_cycle, "fn": run_fn_poll_cycle}
 
         # Ensure every configured platform has its default account row (covers
         # creds added since the last startup migration), then read enabled ones.

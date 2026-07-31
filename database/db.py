@@ -44,6 +44,7 @@ _PIX_SCHEMA_PATH = config.resource_path("database/pix_schema.sql")    # Pixiv ta
 _THR_SCHEMA_PATH = config.resource_path("database/thr_schema.sql")    # Threads tables
 _IG_SCHEMA_PATH = config.resource_path("database/ig_schema.sql")      # Instagram tables
 _E621_SCHEMA_PATH = config.resource_path("database/e621_schema.sql")  # e621 tables
+_FN_SCHEMA_PATH = config.resource_path("database/fn_schema.sql")      # FurryNetwork tables
 _POSTING_SCHEMA_PATH = config.resource_path("database/posting_schema.sql")  # Posting module tables
 _POSTS_SCHEMA_PATH = config.resource_path("database/posts_schema.sql")      # Posts (microblog) module tables
 _COLLECTIONS_SCHEMA_PATH = config.resource_path("database/collections_schema.sql")  # Collections (master container) tables
@@ -121,6 +122,8 @@ def init_db() -> None:
         conn.executescript(ig_schema_sql)
         e621_schema_sql = _E621_SCHEMA_PATH.read_text(encoding="utf-8")
         conn.executescript(e621_schema_sql)
+        fn_schema_sql = _FN_SCHEMA_PATH.read_text(encoding="utf-8")
+        conn.executescript(fn_schema_sql)
         posting_schema_sql = _POSTING_SCHEMA_PATH.read_text(encoding="utf-8")
         conn.executescript(posting_schema_sql)
         posts_schema_sql = _POSTS_SCHEMA_PATH.read_text(encoding="utf-8")
