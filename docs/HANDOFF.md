@@ -10,8 +10,10 @@ the submission tables' `posted_at`/`create_datetime`) — NOT `publications.firs
 *import* date for back-catalogue art (all ~July 2026) and made the radar return 0 on prod; import date is the fallback.
 Route adds title/thumb from `artwork_reader.list_artworks()` + a per-platform follower-growth block (honest about the
 young tracking window). New `#/repost-radar` page (`renderRepostRadar`) + nav link under **Insights & Tools**: card grid
-(thumb, "posted ~N ago", stats, platform deep-links) + age dropdown. +4 tests (`tests/test_repost_radar.py`). Pure
-ranking over your own numbers — no model, no external calls.
+(thumb, "posted ~N ago", stats, platform deep-links) + age dropdown. +5 tests (`tests/test_repost_radar.py`). Pure
+ranking over your own numbers — no model, no external calls. Also fixed `_parse_posted` to accept FA's seconds-bearing
+human date (`August 11, 2019 07:17:50 PM`) — it returned `None` before, silently anchoring all FA art on its import date
+and dropping FA from the radar + the Analytics best-time histogram.
 
 **Prior — 2.194.0 — Wrong-link auditor + auto-backups on.** First of the deterministic roadmap.
 `GET /api/masterpieces/mislink-audit`: dHash each Masterpiece's local images, compare each member's stored hash, flag

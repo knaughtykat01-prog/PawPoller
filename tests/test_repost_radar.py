@@ -101,6 +101,28 @@ def test_anchors_on_real_gallery_date_not_import_date():
         conn.close()
 
 
+def test_fa_human_date_with_seconds_parses():
+    """FA scrapes 'August 11, 2019 07:17:50 PM' (full month + SECONDS). If the
+    parser misses that format the whole platform silently anchors on its import
+    date and drops off the radar — exactly the second prod bug. This locks the
+    FA-format piece in at its true 2019 age."""
+    conn = get_connection()
+    try:
+        conn.execute("INSERT INTO fa_submissions (submission_id, title, posted_at, "
+                     "views, favorites_count, comments_count) "
+                     "VALUES (700,'Old FA','August 11, 2019 07:17:50 PM',400,25,3)")
+        posting_queries.upsert_publication(
+            conn, "Old_FA", 0, "fa", content_type="artwork",
+            external_id="700", external_url="http://fa/700")
+        conn.commit()  # import date is 'now'; only the real FA date makes it old
+        rows = aq.get_repost_candidates(conn, min_age_days=365)
+        hit = next((r for r in rows if r["name"] == "Old_FA"), None)
+        assert hit is not None                 # parsed the FA date → surfaces
+        assert hit["age_days"] > 2000          # 2019 → thousands of days old
+    finally:
+        conn.close()
+
+
 def test_lowering_age_filter_reveals_newer_pieces():
     conn = get_connection()
     try:

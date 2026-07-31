@@ -694,7 +694,15 @@ def _parse_posted(raw):
         return datetime.fromisoformat(s.replace("Z", "+00:00")), len(s) > 10
     except ValueError:
         pass
-    for fmt, has_time in (("%Y-%m-%d %H:%M:%S", True), ("%b %d, %Y %I:%M %p", True),
+    for fmt, has_time in (("%Y-%m-%d %H:%M:%S", True),
+                          # FA scrapes a human-readable date WITH seconds, full or
+                          # abbreviated month, sometimes a comma before the time —
+                          # e.g. "August 11, 2019 07:17:50 PM". Without these the
+                          # whole platform silently drops out of every date-based
+                          # analytic (this is what left FA off the repost radar).
+                          ("%B %d, %Y %I:%M:%S %p", True), ("%b %d, %Y %I:%M:%S %p", True),
+                          ("%B %d, %Y, %I:%M:%S %p", True), ("%b %d, %Y, %I:%M:%S %p", True),
+                          ("%b %d, %Y %I:%M %p", True),
                           ("%B %d, %Y %I:%M %p", True), ("%b %d, %Y, %I:%M %p", True),
                           ("%d %b %Y %H:%M", True), ("%Y-%m-%d", False)):
         try:

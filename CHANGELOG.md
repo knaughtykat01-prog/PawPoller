@@ -35,14 +35,19 @@ the poll stats already collected — no model, no external calls.
   Microblogs/e621 are excluded from the anchor (their dates are recent crossposts); import date is the last-resort
   fallback. Gates to `age_days >= min_age_days`, drops zero-engagement/never-polled pieces, scores `faves*3 + views +
   comments*5`, sorts desc.
+- **`_parse_posted` — recognise FA's seconds-bearing human date** (`August 11, 2019 07:17:50 PM`, full/abbrev month, with
+  or without a comma before the time). It previously had only the no-seconds variants, so every FA date returned `None` —
+  which silently anchored all FA art on its import date and kept the whole platform off the radar (and out of the
+  Analytics best-time histogram). Strictly additive: more formats recognised, nothing else changes.
 - **Frontend:** new `#/repost-radar` page + nav link under **Insights & Tools** (`renderRepostRadar` in `app.js`,
   `API.getRepostRadar`). Card grid (thumb, title, "last shared N months ago", stats, platform chips that deep-link to the
   original post) + a following-now strip. An age dropdown (30/60/90/180/365) re-fetches. Empty state nudges you to lower
   the filter.
 
-**Tests:** `tests/test_repost_radar.py` (4) — gates out too-new and zero-engagement pieces, pools stats + links across
-two platforms, verifies the score, confirms lowering the age filter reveals newer pieces, and locks the key fix: a
-piece imported today but really posted to FA in 2019 surfaces, while one really posted 3 days ago does not.
+**Tests:** `tests/test_repost_radar.py` (5) — gates out too-new and zero-engagement pieces, pools stats + links across
+two platforms, verifies the score, confirms lowering the age filter reveals newer pieces, locks the age anchor (a piece
+imported today but really posted to FA in 2019 surfaces, one really posted 3 days ago does not), and locks FA's
+seconds-bearing date format parsing end-to-end.
 
 ## [2.194.0] - 2026-07-31 - Wrong-link auditor for Masterpieces (+ auto-backups on)
 
