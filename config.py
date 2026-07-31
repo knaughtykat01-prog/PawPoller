@@ -626,6 +626,8 @@ CREDENTIAL_FIELDS = frozenset({
     "ig_access_token",
     # e621 (username is a non-secret identity field → stays plaintext)
     "e621_api_key",
+    # FurryNetwork (OAuth password grant; login email stays plaintext identity)
+    "fn_password", "fn_refresh_token", "fn_access_token",
     # CF proxy
     "cf_worker_url", "cf_worker_key",
     # Dashboard auth
@@ -697,6 +699,8 @@ PLATFORM_CREDENTIAL_FIELDS = {
     "e621": ["e621_username", "e621_api_key"],
     # Telegram channel (Posts-module broadcast target; post-only, not polled).
     "tg": ["tg_bot_token", "tg_channel"],
+    # FurryNetwork (poll+post gallery). Email + password → OAuth token/refresh.
+    "fn": ["fn_username", "fn_password", "fn_refresh_token", "fn_access_token"],
 }
 
 # ── Proactive credential-age tracking (backlog W) ──────────────────
