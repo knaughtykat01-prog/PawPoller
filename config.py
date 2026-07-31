@@ -636,6 +636,9 @@ CREDENTIAL_FIELDS = frozenset({
     "dashboard_password", "dashboard_user",
     # Integrations
     "telegram_bot_token", "telegram_chat_id",
+    # Weekly email digest — SMTP app password (host/user/from/recipients stay
+    # plaintext as non-secret config; only the password is vaulted).
+    "smtp_password",
     "github_pat",
     "turnstile_site_key", "turnstile_secret_key",
     # Server ↔ desktop
@@ -1068,7 +1071,7 @@ def merge_synced_settings(incoming: dict, client_timestamp: float | None = None)
 
 
 # ── App metadata ──
-APP_VERSION = "2.195.0"
+APP_VERSION = "2.196.0"
 
 # ── Inkbunny API settings ──
 INKBUNNY_API_BASE = "https://inkbunny.net"     # Inkbunny API root URL

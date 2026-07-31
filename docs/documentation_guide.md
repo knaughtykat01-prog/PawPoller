@@ -1977,6 +1977,7 @@ editor, settings, testing.
 | GET | `/api/analytics/top-fans` | Cross-platform fan leaderboard. |
 | GET | `/api/analytics/trending` | Submissions with unusual growth (spike detection). |
 | GET | `/api/analytics/historical` | Historical analytics rollup. |
+| GET/POST | `/api/digest/status` · `/preview` · `/settings` · `/test` | Weekly email digest (2.196). `polling/email_digest.py` builds a templated HTML recap from 7-day poll deltas (reusing `polling/telegram.py` helpers), sends via smtplib. `status`=config (no password), `preview`=live HTML, `settings`=persist (smtp_password vaulted, blank=keep), `test`=send now. Scheduler piggybacks `_email_digest_due()` in `server.py`. Deterministic — no model. |
 | GET | `/api/analytics/repost-radar` | Repost Radar (2.195): older, well-performing artwork worth resurfacing. `analytics_queries.get_repost_candidates` pools artwork publications by piece, gates to `min_age_days` **using the real gallery upload date** (`_artwork_gallery_dates` reads the submission tables — `publications.first_posted_at` is the import date and gave 0 results), scores `faves*3+views+comments*5`; route adds title/thumb + a follower-growth block. Deterministic — no model. |
 | GET | `/api/groups` / POST / GET `/{id}` / PUT / DELETE | Submission groups CRUD. |
 | GET | `/api/groups/{id}/stats` | Per-group submission stats. |

@@ -9590,7 +9590,7 @@ const App = {
         try {
             // Core settings: only fetch what General/Platforms/Telegram/Data/About tabs need.
             // Polling tab data is loaded lazily when the user clicks into it.
-            const [creds, prefs, telegram, tgFeatures, pollPausedState, faAuth, wsAuth, sfAuth, sqwAuth, ao3Auth, daAuth, wpAuth, ikAuth, bskyAuth, twAuth, mastAuth, tumAuth, pixAuth, thrAuth, igAuth, e621Auth, updateInfo, postingSettings, browserLoginInfo, setupStatus] = await Promise.all([
+            const [creds, prefs, telegram, tgFeatures, pollPausedState, faAuth, wsAuth, sfAuth, sqwAuth, ao3Auth, daAuth, wpAuth, ikAuth, bskyAuth, twAuth, mastAuth, tumAuth, pixAuth, thrAuth, igAuth, e621Auth, updateInfo, postingSettings, browserLoginInfo, setupStatus, digest] = await Promise.all([
                 API.getCredentials(),
                 API.getPreferences(),
                 API.getTelegram(),
@@ -9616,6 +9616,7 @@ const App = {
                 API.getPostingSettings().catch(() => ({ posting_enabled: false, posting_default_platforms: [], posting_default_rating: 'adult', posting_server_url: '', posting_server_api_key: '', posting_story_archive_path: '' })),
                 API.getBrowserLoginPlatforms().catch(() => ({ available: false, platforms: [] })),
                 API.getSetupStatus().catch(() => ({ runtime_mode: 'desktop', setup_mode: null, polling_owner: 'local' })),
+                API.getDigestStatus().catch(() => ({ enabled: false, interval_days: 7, recipients: [], recipients_raw: '', smtp_host: 'smtp.gmail.com', smtp_port: 587, smtp_username: '', smtp_from: '', smtp_use_tls: true, has_password: false, last_sent_at: null })),
             ]);
 
             // Resolve effective mode for hide/show logic. Falls back to inferred
@@ -9662,6 +9663,7 @@ const App = {
                     <button class="settings-tab ${_settingsTab === 'platforms' ? 'active' : ''}" data-stab="platforms">Platforms</button>
                     <button class="settings-tab ${_settingsTab === 'polling' ? 'active' : ''}" data-stab="polling">Polling</button>
                     <button class="settings-tab ${_settingsTab === 'telegram' ? 'active' : ''}" data-stab="telegram">Telegram</button>
+                    <button class="settings-tab ${_settingsTab === 'digest' ? 'active' : ''}" data-stab="digest">Weekly digest</button>
                     <button class="settings-tab ${_settingsTab === 'data' ? 'active' : ''}" data-stab="data">Data</button>
                     <button class="settings-tab ${_settingsTab === 'logs' ? 'active' : ''}" data-stab="logs">Logs</button>
                     <button class="settings-tab ${_settingsTab === 'about' ? 'active' : ''}" data-stab="about">About</button>
@@ -10710,6 +10712,72 @@ const App = {
                 </div>
 
                 </div><!-- /tab:telegram -->
+
+                <!-- ═══ TAB: Weekly digest ═══ -->
+                <div class="settings-tab-content" data-tab-content="digest" ${_settingsTab !== 'digest' ? 'style="display:none"' : ''}>
+                <div class="settings-section">
+                    <h3>Weekly digest email</h3>
+                    <p style="font-size:13px;color:var(--text-muted);margin-bottom:14px;max-width:64ch">
+                        A plain, templated recap of your week — views/faves/comments gained, growth by platform,
+                        top gainers, new watchers and a few pieces worth resurfacing. Built entirely from your own
+                        poll data: <strong>no AI, nothing shared</strong>. Delivered to your inbox via your own SMTP.
+                    </p>
+                    <div class="settings-row">
+                        <div>
+                            <span class="settings-label">Send the weekly digest</span>
+                            <div style="font-size:11px;color:var(--text-muted);margin-top:2px">${digest.last_sent_at ? 'Last sent ' + Utils.escapeHtml(new Date(digest.last_sent_at).toLocaleString()) : 'Not sent yet'}</div>
+                        </div>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="digest-enabled" ${digest.enabled ? 'checked' : ''}>
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </div>
+                    <div class="settings-row" style="flex-direction:column;align-items:stretch;gap:6px;margin-top:8px">
+                        <label style="font-size:13px;color:var(--text-muted)">Send to (one or more emails, comma-separated)</label>
+                        <input type="text" id="digest-recipients" class="search-input" value="${Utils.escapeHtml(digest.recipients_raw || '')}" placeholder="you@example.com" style="max-width:420px">
+                    </div>
+                    <div class="settings-row" style="align-items:center;gap:8px;margin-top:8px">
+                        <label style="font-size:13px;color:var(--text-muted)">Every</label>
+                        <input type="number" id="digest-interval" class="search-input" style="width:70px" min="1" max="90" value="${digest.interval_days || 7}">
+                        <span style="font-size:13px;color:var(--text-muted)">days</span>
+                    </div>
+
+                    <h3 style="margin-top:24px">Mail server (SMTP)</h3>
+                    <p style="font-size:12px;color:var(--text-muted);margin-bottom:10px;max-width:64ch">
+                        For Gmail, use <code>smtp.gmail.com</code> port <code>587</code>, your address as the username,
+                        and a <a href="https://myaccount.google.com/apppasswords" target="_blank" style="color:var(--accent)">Google App Password</a> (not your normal password).
+                    </p>
+                    <div class="settings-row" style="flex-direction:column;align-items:stretch;gap:6px">
+                        <label style="font-size:13px;color:var(--text-muted)">SMTP host</label>
+                        <input type="text" id="digest-smtp-host" class="search-input" value="${Utils.escapeHtml(digest.smtp_host || 'smtp.gmail.com')}" style="max-width:300px">
+                    </div>
+                    <div class="settings-row" style="align-items:center;gap:8px;margin-top:8px">
+                        <label style="font-size:13px;color:var(--text-muted)">Port</label>
+                        <input type="number" id="digest-smtp-port" class="search-input" style="width:90px" value="${digest.smtp_port || 587}">
+                        <label class="toggle-switch" style="margin-left:12px"><input type="checkbox" id="digest-smtp-tls" ${digest.smtp_use_tls !== false ? 'checked' : ''}><span class="toggle-slider"></span></label>
+                        <span style="font-size:13px;color:var(--text-muted)">Use STARTTLS</span>
+                    </div>
+                    <div class="settings-row" style="flex-direction:column;align-items:stretch;gap:6px;margin-top:8px">
+                        <label style="font-size:13px;color:var(--text-muted)">Username</label>
+                        <input type="text" id="digest-smtp-user" class="search-input" value="${Utils.escapeHtml(digest.smtp_username || '')}" placeholder="you@gmail.com" style="max-width:300px">
+                    </div>
+                    <div class="settings-row" style="flex-direction:column;align-items:stretch;gap:6px;margin-top:8px">
+                        <label style="font-size:13px;color:var(--text-muted)">Password / app password ${digest.has_password ? '(saved — leave blank to keep)' : ''}</label>
+                        <input type="password" id="digest-smtp-pass" class="search-input" placeholder="${digest.has_password ? '********' : 'app password'}" style="max-width:300px" autocomplete="new-password">
+                    </div>
+                    <div class="settings-row" style="flex-direction:column;align-items:stretch;gap:6px;margin-top:8px">
+                        <label style="font-size:13px;color:var(--text-muted)">From address (optional — defaults to username)</label>
+                        <input type="text" id="digest-smtp-from" class="search-input" value="${Utils.escapeHtml(digest.smtp_from || '')}" placeholder="you@gmail.com" style="max-width:300px">
+                    </div>
+
+                    <div style="margin-top:16px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+                        <button class="btn btn-primary" id="digest-save-btn">Save</button>
+                        <button class="btn btn-secondary" id="digest-preview-btn">Preview</button>
+                        <button class="btn btn-secondary" id="digest-test-btn">Send test now</button>
+                        <span id="digest-msg" style="font-size:13px"></span>
+                    </div>
+                </div>
+                </div><!-- /tab:digest -->
 
                 <!-- ═══ TAB: Platforms ═══ -->
                 <div class="settings-tab-content" data-tab-content="platforms" ${_settingsTab !== 'platforms' ? 'style="display:none"' : ''}>
@@ -12152,6 +12220,67 @@ const App = {
                     digestIntervalInput.value = val;
                     try { await API.setTelegramFeatures({ digest_interval_hours: val }); }
                     catch (err) { alert('Failed: ' + err.message); }
+                });
+            }
+
+            // ── Weekly email digest ───────────────────────────────────
+            const digestSaveBtn = document.getElementById('digest-save-btn');
+            if (digestSaveBtn) {
+                const dMsg = () => document.getElementById('digest-msg');
+                const collectDigest = () => {
+                    const payload = {
+                        email_digest_enabled: document.getElementById('digest-enabled').checked,
+                        email_digest_recipients: document.getElementById('digest-recipients').value.trim(),
+                        email_digest_interval_days: Math.max(1, Math.min(90, parseInt(document.getElementById('digest-interval').value) || 7)),
+                        smtp_host: document.getElementById('digest-smtp-host').value.trim(),
+                        smtp_port: parseInt(document.getElementById('digest-smtp-port').value) || 587,
+                        smtp_use_tls: document.getElementById('digest-smtp-tls').checked,
+                        smtp_username: document.getElementById('digest-smtp-user').value.trim(),
+                        smtp_from: document.getElementById('digest-smtp-from').value.trim(),
+                    };
+                    const pass = document.getElementById('digest-smtp-pass').value;
+                    if (pass) payload.smtp_password = pass;   // blank = keep existing
+                    return payload;
+                };
+                digestSaveBtn.addEventListener('click', async () => {
+                    const msg = dMsg();
+                    digestSaveBtn.disabled = true;
+                    try {
+                        await API.saveDigestSettings(collectDigest());
+                        msg.textContent = 'Saved.';
+                        msg.style.color = 'var(--success)';
+                        document.getElementById('digest-smtp-pass').value = '';
+                    } catch (err) {
+                        msg.textContent = 'Failed: ' + err.message;
+                        msg.style.color = 'var(--danger)';
+                    }
+                    digestSaveBtn.disabled = false;
+                });
+
+                const digestTestBtn = document.getElementById('digest-test-btn');
+                digestTestBtn.addEventListener('click', async () => {
+                    const msg = dMsg();
+                    // Save current form first so the test uses what's on screen.
+                    digestTestBtn.disabled = true;
+                    digestTestBtn.textContent = 'Sending...';
+                    msg.textContent = '';
+                    try {
+                        await API.saveDigestSettings(collectDigest());
+                        document.getElementById('digest-smtp-pass').value = '';
+                        const res = await API.testDigest();
+                        msg.textContent = 'Test sent to ' + (res.recipients || []).join(', ');
+                        msg.style.color = 'var(--success)';
+                    } catch (err) {
+                        msg.textContent = 'Failed: ' + err.message;
+                        msg.style.color = 'var(--danger)';
+                    }
+                    digestTestBtn.textContent = 'Send test now';
+                    digestTestBtn.disabled = false;
+                });
+
+                const digestPreviewBtn = document.getElementById('digest-preview-btn');
+                digestPreviewBtn.addEventListener('click', () => {
+                    window.open('/api/digest/preview', '_blank');
                 });
             }
 

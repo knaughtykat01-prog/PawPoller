@@ -1,7 +1,20 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-07-31
-**Current version (master):** 2.195.0 — **Repost Radar.** Second deterministic (NO-AI — see the no-AI rule) roadmap
+**Current version (master):** 2.196.0 — **Weekly digest email.** Third deterministic (NO-AI) roadmap item. New module
+`polling/email_digest.py` (build → render → send → orchestrate): `build_weekly_digest_data` pools per-platform 7-day
+deltas + totals + gainers (reusing `polling/telegram.py`'s `_get_digest_deltas`/`_get_platform_totals`/`_get_watcher_stats`)
++ follower growth + watchers + a 3-piece Repost-Radar tie-in; `render_weekly_digest_html`/`_text` render an email-safe
+templated HTML + plaintext; `send_email` (smtplib STARTTLS/SSL); `send_weekly_email_digest(force)` gates on
+`email_digest_enabled`, sends, stamps `last_email_digest_sent_at`. `server.py` piggybacks `_email_digest_due()` on the
+poll cycle (interval `email_digest_interval_days`, default 7; blocking send in an executor). API: `GET /api/digest/status`,
+`GET /api/digest/preview`, `POST /api/digest/settings` (smtp_password auto-vaulted; blank=keep), `POST /api/digest/test`.
+New **Settings → Weekly digest** tab (enable/recipients/interval/SMTP + Save/Preview/Send test). `smtp_password` added to
+`CREDENTIAL_FIELDS`. +5 tests (`tests/test_email_digest.py`). No model — templated over your own numbers. **Roadmap:**
+✅ auto-backups, ✅ mislink auditor, ✅ repost radar, ✅ weekly digest · next: tag-performance analytics · Telegram-channel
+posting · Reddit (own project).
+
+**Prior — 2.195.0 — Repost Radar.** Second deterministic (NO-AI — see the no-AI rule) roadmap
 item. `GET /api/analytics/repost-radar?min_age_days=60&limit=25` → `{candidates, followers, min_age_days}`:
 `analytics_queries.get_repost_candidates` pools artwork publications by piece (sums views/faves/comments, normalises
 `hits`/`reads`→views + `kudos`/`votes`→faves), gates to pieces older than `min_age_days`, drops zero-engagement rows,

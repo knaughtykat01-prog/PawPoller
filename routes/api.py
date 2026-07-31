@@ -2570,6 +2570,97 @@ def get_repost_radar(min_age_days: int = 60, limit: int = 25):
         conn.close()
 
 
+# ── Weekly email digest ───────────────────────────────────────
+
+@router.get("/digest/status")
+def digest_status():
+    """Current weekly-email-digest config (for the Settings panel). Never returns
+    the SMTP password — only whether one is stored."""
+    from polling import email_digest
+    settings = config.get_settings()
+    return {
+        "enabled": bool(settings.get("email_digest_enabled", False)),
+        "interval_days": int(settings.get("email_digest_interval_days", 7) or 7),
+        "recipients": email_digest.parse_recipients(settings),
+        "recipients_raw": settings.get("email_digest_recipients") or "",
+        "smtp_host": settings.get("smtp_host") or email_digest.DEFAULT_SMTP_HOST,
+        "smtp_port": int(settings.get("smtp_port") or email_digest.DEFAULT_SMTP_PORT),
+        "smtp_username": settings.get("smtp_username") or "",
+        "smtp_from": settings.get("smtp_from") or "",
+        "smtp_use_tls": bool(settings.get("smtp_use_tls", True)),
+        "has_password": bool(settings.get("smtp_password")),
+        "last_sent_at": settings.get("last_email_digest_sent_at"),
+    }
+
+
+@router.get("/digest/preview")
+def digest_preview():
+    """Render the current weekly digest as HTML — for the in-app preview iframe."""
+    from fastapi.responses import HTMLResponse
+    from polling import email_digest
+    settings = config.get_settings()
+    conn = get_connection()
+    try:
+        data = email_digest.build_weekly_digest_data(
+            conn, days=int(settings.get("email_digest_interval_days", 7) or 7),
+            tz_name=settings.get("display_timezone", "UTC"))
+    finally:
+        conn.close()
+    return HTMLResponse(email_digest.render_weekly_digest_html(data))
+
+
+@router.post("/digest/settings")
+def digest_save_settings(body: dict):
+    """Persist the weekly-digest config. The SMTP password is auto-vaulted (it's
+    in CREDENTIAL_FIELDS); a blank/absent password keeps the stored one. Only
+    provided keys are updated."""
+    from polling import email_digest
+    update = {}
+    if "email_digest_enabled" in body:
+        update["email_digest_enabled"] = bool(body["email_digest_enabled"])
+    if "smtp_use_tls" in body:
+        update["smtp_use_tls"] = bool(body["smtp_use_tls"])
+    if "email_digest_recipients" in body:
+        update["email_digest_recipients"] = str(body["email_digest_recipients"] or "")
+    if "smtp_host" in body:
+        update["smtp_host"] = str(body["smtp_host"] or "").strip()
+    if "smtp_username" in body:
+        update["smtp_username"] = str(body["smtp_username"] or "").strip()
+    if "smtp_from" in body:
+        update["smtp_from"] = str(body["smtp_from"] or "").strip()
+    if "email_digest_interval_days" in body:
+        try:
+            update["email_digest_interval_days"] = max(1, min(90, int(body["email_digest_interval_days"])))
+        except (TypeError, ValueError):
+            pass
+    if "smtp_port" in body:
+        try:
+            update["smtp_port"] = int(body["smtp_port"])
+        except (TypeError, ValueError):
+            pass
+    # Only overwrite the vaulted password when a non-empty one is supplied.
+    if body.get("smtp_password"):
+        update["smtp_password"] = str(body["smtp_password"])
+    config.save_settings(update)
+    settings = config.get_settings()
+    return {"ok": True, "recipients": email_digest.parse_recipients(settings),
+            "has_password": bool(settings.get("smtp_password"))}
+
+
+@router.post("/digest/test")
+def digest_test():
+    """Send a one-off test digest to the configured recipients right now. Bypasses
+    the enabled gate and does not reset the weekly schedule."""
+    from polling import email_digest
+    try:
+        result = email_digest.send_weekly_email_digest(force=True)
+    except Exception as e:
+        raise HTTPException(400, detail=str(e) or "Send failed")
+    if not result.get("sent"):
+        raise HTTPException(400, detail=f"Not sent: {result.get('reason', 'unknown')}")
+    return result
+
+
 @router.get("/analytics/historical")
 def get_historical_analytics(weeks: int = Query(12)):
     """Return historical analytics: best periods, fastest growing, weekly growth."""

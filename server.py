@@ -215,6 +215,13 @@ def _start_poll_orchestrator():
             return False
         return _seconds_until_next("last_weekly_digest_sent_at", 7 * 24 * 60 * 60) <= 60
 
+    def _email_digest_due() -> bool:
+        settings = config.get_settings()
+        if not settings.get("email_digest_enabled", False):
+            return False
+        days = int(settings.get("email_digest_interval_days", 7) or 7)
+        return _seconds_until_next("last_email_digest_sent_at", days * 24 * 60 * 60) <= 60
+
     async def _poll_all() -> list[dict]:
         """Poll all configured platforms concurrently.
 
@@ -473,6 +480,16 @@ def _start_poll_orchestrator():
                             await send_weekly_digest_report()
                         except Exception as e:
                             logger.error("Weekly digest report failed: %s", e)
+
+                    # Weekly EMAIL digest (deterministic, templated — no AI). Runs
+                    # in an executor so the blocking SMTP send never stalls the loop.
+                    if _email_digest_due():
+                        try:
+                            from polling.email_digest import send_weekly_email_digest
+                            await asyncio.get_event_loop().run_in_executor(
+                                None, send_weekly_email_digest)
+                        except Exception as e:
+                            logger.error("Weekly email digest failed: %s", e)
             else:
                 logger.info("Poll cycle skipped — polling is paused")
 

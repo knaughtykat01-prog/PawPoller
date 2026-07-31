@@ -357,6 +357,10 @@ const API = {
     disconnectTelegram() { return this.post('/api/settings/telegram/disconnect'); },
     getTelegramFeatures() { return this.get('/api/settings/telegram/features'); },
     setTelegramFeatures(data) { return this.post('/api/settings/telegram/features', data); },
+    /* Weekly email digest (deterministic, templated — no AI). */
+    getDigestStatus() { return this.get('/api/digest/status'); },
+    saveDigestSettings(data) { return this.post('/api/digest/settings', data); },
+    testDigest() { return this.post('/api/digest/test'); },
     /* ── FA (FurAffinity) convenience methods ──────────────────
      * Mirror of the IB methods above, namespaced under /api/fa/.
      * Covers auth connection, status, submissions, snapshots,

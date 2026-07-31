@@ -12,6 +12,36 @@ popup, which is usually the wrong thing to show — so write the blockquote.
 
 ---
 
+## [2.196.0] - 2026-07-31 - Weekly digest email
+
+> **Get your week emailed to you.** New *Settings → Weekly digest* tab: PawPoller can now send you a tidy weekly
+> recap — views/faves/comments gained, growth by platform, your top gainers, new watchers, and a few older pieces
+> worth resurfacing. It's built entirely from your own poll numbers — **no AI, nothing shared** — and goes to your
+> own inbox through your own mail server (Gmail works with an app password). Add your email, hit **Send test now** to
+> check it, and turn it on. Preview exactly what it looks like before enabling.
+
+Third deterministic (no-AI) roadmap item. A fixed HTML template over the same 7-day deltas the Telegram weekly digest
+already computes — no model, and the only thing that leaves the box is the finished email to your SMTP server.
+
+- **New module `polling/email_digest.py`** — four layers: `build_weekly_digest_data(conn, days, tz_name)` pools per-platform
+  7-day deltas + current totals + top gainers (reusing `polling/telegram.py`'s `_get_digest_deltas` / `_get_platform_totals`
+  / `_get_watcher_stats`), follower growth, new watchers, and a 3-piece Repost-Radar tie-in → a plain dict;
+  `render_weekly_digest_html` / `render_weekly_digest_text` render an email-safe (inline-styled, table-layout) HTML part +
+  plaintext fallback; `send_email` delivers via smtplib (STARTTLS or SSL); `send_weekly_email_digest(force)` gates on the
+  enabled flag, builds, sends, and stamps `last_email_digest_sent_at`.
+- **Scheduler:** `server.py` piggybacks a `_email_digest_due()` check on the poll cycle (own `email_digest_interval_days`,
+  default 7) and runs the blocking send in an executor so it never stalls the loop.
+- **API:** `GET /api/digest/status` (config, never the password), `GET /api/digest/preview` (renders the live HTML),
+  `POST /api/digest/settings` (persists config; `smtp_password` auto-vaulted via CREDENTIAL_FIELDS, blank = keep),
+  `POST /api/digest/test` (send now, bypasses the enabled gate, doesn't touch the weekly clock).
+- **Settings:** new **Weekly digest** tab — enable toggle, recipients, interval, SMTP host/port/TLS/user/password/from,
+  plus **Save**, **Preview** and **Send test now**. `API.getDigestStatus` / `saveDigestSettings` / `testDigest`.
+- **Config:** `smtp_password` added to `CREDENTIAL_FIELDS` (vaulted); host/user/from/recipients stay plaintext config.
+
+**Tests:** `tests/test_email_digest.py` (5) — pools deltas + totals, renders numbers into HTML/text, dedupes/splits
+recipients, refuses to send without full SMTP config, and drives smtplib correctly (login + sendmail to all recipients)
+with the network monkeypatched.
+
 ## [2.195.0] - 2026-07-31 - Repost Radar: resurface your best old artwork
 
 > **A new page that tells you which old art is worth posting again.** "Repost Radar" (in Insights & Tools) looks at
