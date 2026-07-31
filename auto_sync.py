@@ -95,14 +95,18 @@ def _sync_target():
     return server_url, api_key
 
 
-def _do_push():
-    """Push current settings to the server. Runs on the debounce timer thread."""
+def _do_push() -> int:
+    """Push current settings to the server. Runs on the debounce timer thread.
+
+    Returns the number of keys the server merged, or -1 if it was not paired /
+    unreachable / errored. (The debounce-timer caller ignores the return; the
+    manual push_now() button surfaces it.)"""
     import httpx
     import config
 
     target = _sync_target()
     if target is None:
-        return
+        return -1
     server_url, api_key = target
 
     try:
@@ -115,12 +119,14 @@ def _do_push():
         )
         if resp.status_code == 200:
             body = resp.json()
-            logger.info("Auto-sync push: %d keys merged on server",
-                        body.get("keys_merged", 0))
-        else:
-            logger.warning("Auto-sync push failed: HTTP %d", resp.status_code)
+            merged = int(body.get("keys_merged", 0))
+            logger.info("Auto-sync push: %d keys merged on server", merged)
+            return merged
+        logger.warning("Auto-sync push failed: HTTP %d", resp.status_code)
+        return -1
     except Exception as e:
         logger.debug("Auto-sync push: server unreachable (%s)", e)
+        return -1
 
 
 def schedule_push() -> None:
@@ -144,7 +150,7 @@ def schedule_push() -> None:
         _push_timer.start()
 
 
-def _pull_attempt() -> tuple[bool, bool]:
+def _pull_attempt(force: bool = False) -> tuple[bool, bool]:
     """Pull from the cloud server.
 
     Returns ``(reachable, applied)``:
@@ -192,8 +198,10 @@ def _pull_attempt() -> tuple[bool, bool]:
                    if config.SETTINGS_PATH.exists() else 0)
     # Last-writer-wins: only apply if the server is newer than us.
     # Skipping when server is older avoids stomping a push we just sent
-    # that the server hasn't fully echoed back yet.
-    if server_mtime <= local_mtime:
+    # that the server hasn't fully echoed back yet. A *manual* pull (force)
+    # bypasses this — the user explicitly clicked "Pull from server", so
+    # apply the server's copy even if the local file was touched more recently.
+    if not force and server_mtime <= local_mtime:
         return True, False
     _in_pull_merge.active = True
     try:
@@ -204,15 +212,23 @@ def _pull_attempt() -> tuple[bool, bool]:
     return True, True
 
 
-def pull_once() -> bool:
+def pull_once(force: bool = False) -> bool:
     """One-shot pull. Returns True iff fresh settings were applied.
 
     Kept for the backwards-compat surface (main.py / tests). Internally
     delegates to ``_pull_attempt`` which exposes the richer state the
-    pull loop needs to make backoff decisions.
+    pull loop needs to make backoff decisions. ``force`` bypasses the
+    last-writer-wins mtime guard (the manual "Pull from server" button).
     """
-    _reachable, applied = _pull_attempt()
+    _reachable, applied = _pull_attempt(force=force)
     return applied
+
+
+def push_now() -> int:
+    """Synchronous one-shot push to the server (the manual "Push to server"
+    button). Bypasses the debounce timer. Returns the number of keys the
+    server merged, or -1 if it was unreachable / not paired."""
+    return _do_push()
 
 
 def _pull_loop():

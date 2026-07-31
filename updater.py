@@ -163,6 +163,34 @@ def _resolve_source_dir(extract_dir: Path, exe_name: str) -> Path:
     return source
 
 
+# Seconds the update .bat waits before mirroring the new build in — long enough
+# for this process to exit and release the lock on its own .exe/DLLs. The caller
+# (routes/api.py::apply_update) schedules os._exit shortly after it responds, so
+# 5s leaves a comfortable margin. robocopy /MIR against a still-locked exe only
+# partial-copies (new _internal, stale exe) — the 3.0.0 incident.
+_UPDATE_EXIT_GRACE_SECONDS = 5
+
+
+def _build_update_bat(source_dir, app_dir, exe_name: str) -> str:
+    """The self-update batch script (Windows). The running .exe can't overwrite
+    itself, so this detached script:
+      1. `timeout` — waits _UPDATE_EXIT_GRACE_SECONDS for this process to exit
+         and release the file locks on its own .exe and DLLs.
+      2. `robocopy /MIR` — mirrors the extracted update onto the install dir,
+         replacing all files (and purging removed ones).
+      3. `/XD data logs` — SAFETY: never touches the user's database/config/logs.
+      4. `start` — relaunches the updated .exe.
+      5. `del "%~f0"` — the script deletes itself.
+    /R:2 /W:2 bounds robocopy's retries (its default is /R:1000000 /W:30, which
+    would hang the updater forever on a single AV-locked file)."""
+    return f"""@echo off
+timeout /t {_UPDATE_EXIT_GRACE_SECONDS} /nobreak > nul
+robocopy "{source_dir}" "{app_dir}" /MIR /XD data logs /R:2 /W:2 /NP
+start "" "{app_dir}\\{exe_name}"
+del "%~f0"
+"""
+
+
 def apply_update(zip_path: Path) -> None:
     """Apply the downloaded update.
 
@@ -201,34 +229,15 @@ def apply_update(zip_path: Path) -> None:
 
     source_dir = _resolve_source_dir(extract_dir, exe_name)
 
-    # Self-update batch script mechanism:
-    # The running .exe can't overwrite itself, so we write a .bat script that:
-    #   1. `timeout /t 2` — waits 2 seconds for the current process to exit
-    #      and release file locks on its own .exe and DLLs.
-    #   2. `robocopy /MIR` — mirrors the extracted update into the app directory,
-    #      replacing all files with the new version. /MIR deletes files in the
-    #      target that don't exist in the source (cleaning up removed files).
-    #   3. `/XD data logs` — SAFETY: excludes the "data" and "logs" directories
-    #      from mirroring so the user's database, config, and log history are
-    #      never deleted or overwritten during an update.
-    #   4. `start` — launches the updated .exe.
-    #   5. `del "%~f0"` — the batch script deletes itself (cleanup).
-    # /R:2 /W:2 — bound robocopy's retries. Its default is /R:1000000 /W:30, so a
-    # single locked file (AV scan, a DLL held a beat too long) would hang the
-    # updater for effectively forever instead of failing fast.
     bat_path = zip_path.parent / "_update.bat"
-    bat_content = f"""@echo off
-timeout /t 2 /nobreak > nul
-robocopy "{source_dir}" "{app_dir}" /MIR /XD data logs /R:2 /W:2 /NP
-start "" "{app_dir}\\{exe_name}"
-del "%~f0"
-"""
-    bat_path.write_text(bat_content, encoding="utf-8")
+    bat_path.write_text(_build_update_bat(source_dir, app_dir, exe_name), encoding="utf-8")
     logger.info("Update script written to %s", bat_path)
 
     # os.startfile launches the .bat asynchronously (detached from this process).
-    # The caller is expected to exit the app immediately after this call so the
-    # batch script's timeout elapses while the process is shutting down.
+    # The .bat waits _UPDATE_EXIT_GRACE_SECONDS, so the CALLER MUST exit the app
+    # within that window to release the lock on its own .exe/DLLs — otherwise
+    # robocopy hits the running, locked exe and only partial-copies (the 3.0.0
+    # in-app-update incident). routes/api.py::apply_update schedules that exit.
     os.startfile(str(bat_path))
 
 

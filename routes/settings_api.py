@@ -72,6 +72,45 @@ async def sync_settings(req: SyncRequest) -> SyncResponse:
     )
 
 
+@settings_router.post("/sync/pull-now")
+async def sync_pull_now():
+    """Manually pull settings from the PAIRED SERVER — the real remote pull.
+
+    The Settings "Pull from server" button used to POST the *local* /sync
+    endpoint (a relative URL), which only echoes this device's own settings and
+    saves nothing — it never contacted the server. This runs the same path the
+    5-min background loop uses (auto_sync), fetching the remote server's settings
+    over the pairing URL + key and merging them, with ``force=True`` so an
+    explicit click always applies the server's copy (bypassing the background
+    loop's last-writer-wins mtime guard)."""
+    import auto_sync
+    if auto_sync._sync_target() is None:
+        raise HTTPException(
+            400, "Not paired with a server. Set the server URL + API key in Setup → pairing first.")
+    try:
+        applied = auto_sync.pull_once(force=True)
+    except Exception as e:
+        raise HTTPException(502, f"Pull failed: {e}")
+    return {"ok": True, "applied": bool(applied), "total_keys": len(config.get_settings())}
+
+
+@settings_router.post("/sync/push-now")
+async def sync_push_now():
+    """Manually push local settings to the PAIRED SERVER — the real remote push.
+    (Companion to /sync/pull-now; the old button pushed local→local.)"""
+    import auto_sync
+    if auto_sync._sync_target() is None:
+        raise HTTPException(
+            400, "Not paired with a server. Set the server URL + API key in Setup → pairing first.")
+    try:
+        merged = auto_sync.push_now()
+    except Exception as e:
+        raise HTTPException(502, f"Push failed: {e}")
+    if merged < 0:
+        raise HTTPException(502, "Server unreachable — check the pairing URL and that the server is up.")
+    return {"ok": True, "keys_merged": merged}
+
+
 @settings_router.get("/sync/status")
 async def sync_status():
     """Check sync readiness — returns server version and settings timestamp."""

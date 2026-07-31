@@ -12,6 +12,41 @@ popup, which is usually the wrong thing to show — so write the blockquote.
 
 ---
 
+## [3.0.1] - 2026-07-31 - Fixes: in-app updater on Windows + the desktop↔server sync buttons
+
+> **3.0.1 patches two things.** (1) The in-app **Update** button now closes the app itself so the new version can install
+> — before, it left the app running, so on Windows the update couldn't replace the locked program files (you'd see
+> "file in use" errors and a half-applied update). (2) The **Pull from server** / **Push to server** buttons now actually
+> talk to your paired server. Previously they only read this device's own settings and misleadingly said "pulled from
+> server." So if you've set a platform up on the server, **Pull from server** now brings its login down to the desktop.
+> (Reminder: in paired mode the server is the source of truth — connect a platform on the server first, then pull.)
+
+Two independent bug fixes, no new features.
+
+**In-app updater (Windows) — the running app never exited, so robocopy hit locked files.** `apply_update` writes a detached
+`_update.bat` that waits, then `robocopy /MIR`s the new build in — and its own comment says *"the caller is expected to exit
+the app immediately"* so the `.exe`/DLLs unlock first. But the caller (`routes/api.py::apply_update`) returned
+`"restarting…"` **without ever exiting** (unlike the `/settings` restart endpoint, which schedules `os._exit`). So the
+`.bat`'s 2 s timer elapsed with `PawPoller.exe` + `libcrypto-3.dll` still locked → `ERROR 32` → a partial update (new
+`_internal`, stale `.exe`). Fix: `apply_update` now schedules `threading.Timer(1.5, os._exit(0))` after responding (covers
+Windows *and* the Linux AppImage path, which also needs the process to exit), and the `.bat` grace bumped 2 s → 5 s
+(`updater._UPDATE_EXIT_GRACE_SECONDS`) for margin. The `.bat` builder was extracted to `updater._build_update_bat` and
+unit-tested.
+
+**Desktop↔server sync buttons pointed at the wrong endpoint.** The Settings **Pull from server** / **Push to server**
+buttons POSTed the *local* `/api/settings/sync` (a relative URL) — which just echoes this device's own settings and saves
+nothing — then reported "Pulled/Pushed N keys from/to server." They never contacted the paired server. The real remote
+sync only ran via the 5-min background `auto_sync` loop (which is also last-writer-wins by mtime, so a manual intent could
+be silently skipped). Fix: new `POST /api/settings/sync/pull-now` + `/push-now` run `auto_sync`'s real remote pull/push
+over the pairing URL + key; **Pull** uses `force=True` so an explicit click always applies the server's copy (bypassing the
+mtime guard), and reloads the page so freshly-pulled platform logins show. `auto_sync.pull_once(force=…)`,
+`auto_sync.push_now()`, and `_do_push()` now returning the merged count are the supporting changes. This is why "pull didn't
+fix the not-yet-configured platforms" — the button never reached the server, and the platforms weren't set up there anyway.
+
+**Tests:** `tests/test_updater_source_dir.py` — new `_build_update_bat` case (5 s grace, relaunch, `/XD data logs`, self-delete).
+
+---
+
 ## [3.0.0] - 2026-07-31 - PawPoller 3.0 — 19 platforms, the whole fediverse, and a deterministic analytics suite
 
 > **PawPoller 3.0.** A milestone release. PawPoller now tracks **19 platforms** — every major furry gallery, the

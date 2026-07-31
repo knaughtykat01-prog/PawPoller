@@ -2013,9 +2013,17 @@ def apply_update(body: dict):
     try:
         zip_path = updater.download_update(download_url)
         updater.apply_update(zip_path)
-        return {"status": "success", "message": "Update applied — restarting..."}
     except Exception as e:
         raise HTTPException(500, detail=str(e))
+    # apply_update spawned a detached helper (Windows _update.bat / Linux shell
+    # script) that waits a few seconds, then replaces this app's files — which
+    # requires THIS process to exit first so it releases the lock on its own
+    # .exe/DLLs (Windows) or AppImage (Linux). Without this the helper's robocopy
+    # hits the running, locked exe and only partial-copies (the 3.0.0 incident).
+    # Mirror the /settings restart endpoint: hard-exit shortly after we respond.
+    import os as _os
+    threading.Timer(1.5, lambda: _os._exit(0)).start()
+    return {"status": "success", "message": "Update applied — restarting..."}
 
 
 # ── Thumbnail Proxy ──────────────────────────────────────────

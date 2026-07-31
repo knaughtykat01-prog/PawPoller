@@ -1,7 +1,18 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-07-31
-**Current version (master):** 3.0.0 — **PawPoller 3.0 milestone.** Major-version marker cut from the 2.202.0 tree (no new
+**Current version (master):** 3.0.1 — **Two bug fixes (no features).** (1) **In-app updater on Windows:** `routes/api.py::
+apply_update` never exited the process, so the detached `_update.bat`'s robocopy hit the still-locked `PawPoller.exe`/DLLs
+→ `ERROR 32` + partial update (the reported incident). Fix: schedule `threading.Timer(1.5, os._exit(0))` after responding
+(mirrors the `/settings` restart endpoint; covers Linux AppImage too) + `.bat` grace 2 s→5 s (`_UPDATE_EXIT_GRACE_SECONDS`);
+`.bat` builder extracted to `updater._build_update_bat` + tested. (2) **Desktop↔server sync buttons:** "Pull/Push from
+server" POSTed the *local* `/api/settings/sync` (echoes own settings, never hit the server) yet said "pulled from server".
+Fix: new `POST /api/settings/sync/{pull,push}-now` run `auto_sync`'s real remote pull/push; Pull uses `force=True`
+(bypasses the last-writer-wins mtime guard) + reloads. `auto_sync.pull_once(force)`, `push_now()`, `_do_push()→int`. **Note
+for paired-desktop:** the server is the source of truth — a platform must be connected ON THE SERVER before Pull can bring
+it to the desktop (this is why fn/fbr "weren't fixed" — never connected server-side).
+
+**Prior — 3.0.0 — PawPoller 3.0 milestone.** Major-version marker cut from the 2.202.0 tree (no new
 code) to headline the completed platform-expansion sprint + deterministic analytics suite: **19 platforms tracked, posts
 to 12**, full fediverse coverage, all AI-free. Rolls up 2.194–2.202 (repost radar, mislink auditor, weekly digest, tag-perf
 insights, Telegram-channel posting, Library Posted/Drafts filter, FurryNetwork, Furbooru, fediverse-via-Mastodon). Tagged

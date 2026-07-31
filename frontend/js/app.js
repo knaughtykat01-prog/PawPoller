@@ -14866,15 +14866,17 @@ const App = {
             document.getElementById('sync-pull-btn')?.addEventListener('click', async (e) => {
                 e.target.disabled = true; e.target.textContent = 'Pulling...';
                 try {
-                    const resp = await fetch('/api/settings/sync', {
-                        method: 'POST', headers: {'Content-Type': 'application/json'},
-                        body: JSON.stringify({mode: 'pull'}),
-                    });
-                    const data = await resp.json();
-                    if (data.ok) {
-                        syncResult.innerHTML = '<span style="color:var(--success)">Pulled ' + Object.keys(data.settings).length + ' keys from server</span>';
+                    // Real REMOTE pull (auto_sync). The old handler hit the local
+                    // /sync endpoint and only echoed this device's own settings.
+                    const resp = await fetch('/api/settings/sync/pull-now', { method: 'POST' });
+                    const data = await resp.json().catch(() => ({}));
+                    if (resp.ok && data.ok) {
+                        syncResult.innerHTML = data.applied
+                            ? '<span style="color:var(--success)">Pulled the server’s settings (' + data.total_keys + ' keys). Reloading…</span>'
+                            : '<span style="color:var(--text-muted)">Server reached, but it had nothing newer to pull.</span>';
+                        if (data.applied) setTimeout(() => location.reload(), 1200);
                     } else {
-                        syncResult.innerHTML = '<span style="color:var(--danger)">Pull failed</span>';
+                        syncResult.innerHTML = '<span style="color:var(--danger)">' + Utils.escapeHtml(data.detail || 'Pull failed') + '</span>';
                     }
                 } catch (err) {
                     syncResult.innerHTML = '<span style="color:var(--danger)">' + Utils.escapeHtml(err.message) + '</span>';
@@ -14884,21 +14886,12 @@ const App = {
             document.getElementById('sync-push-btn')?.addEventListener('click', async (e) => {
                 e.target.disabled = true; e.target.textContent = 'Pushing...';
                 try {
-                    const pullResp = await fetch('/api/settings/sync', {
-                        method: 'POST', headers: {'Content-Type': 'application/json'},
-                        body: JSON.stringify({mode: 'pull'}),
-                    });
-                    const local = await pullResp.json();
-                    if (!local.ok) throw new Error('Failed to read local settings');
-                    const pushResp = await fetch('/api/settings/sync', {
-                        method: 'POST', headers: {'Content-Type': 'application/json'},
-                        body: JSON.stringify({mode: 'push', settings: local.settings, timestamp: local.timestamp}),
-                    });
-                    const data = await pushResp.json();
-                    if (data.ok) {
-                        syncResult.innerHTML = '<span style="color:var(--success)">Pushed ' + data.keys_merged + ' keys to server</span>';
+                    const resp = await fetch('/api/settings/sync/push-now', { method: 'POST' });
+                    const data = await resp.json().catch(() => ({}));
+                    if (resp.ok && data.ok) {
+                        syncResult.innerHTML = '<span style="color:var(--success)">Pushed local settings to the server (' + data.keys_merged + ' keys merged).</span>';
                     } else {
-                        syncResult.innerHTML = '<span style="color:var(--danger)">Push failed</span>';
+                        syncResult.innerHTML = '<span style="color:var(--danger)">' + Utils.escapeHtml(data.detail || 'Push failed') + '</span>';
                     }
                 } catch (err) {
                     syncResult.innerHTML = '<span style="color:var(--danger)">' + Utils.escapeHtml(err.message) + '</span>';

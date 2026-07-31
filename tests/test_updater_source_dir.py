@@ -9,9 +9,22 @@ and refuses a payload with no executable rather than purge a working install.
 """
 import pytest
 
-from updater import _resolve_source_dir
+from updater import _resolve_source_dir, _build_update_bat, _UPDATE_EXIT_GRACE_SECONDS
 
 EXE = "PawPoller.exe"
+
+
+def test_update_bat_waits_for_exit_relaunches_and_spares_user_data():
+    """The self-update .bat must (a) wait long enough for this process to exit
+    and release its exe/DLL locks — the 3.0.0 incident was robocopy running
+    against a still-running, locked PawPoller.exe — (b) never touch data/logs,
+    and (c) relaunch + self-delete."""
+    bat = _build_update_bat("C:\\src", "C:\\app", EXE)
+    assert _UPDATE_EXIT_GRACE_SECONDS >= 3, "grace must outlast the app's ~1.5s self-exit"
+    assert f"timeout /t {_UPDATE_EXIT_GRACE_SECONDS}" in bat
+    assert 'robocopy "C:\\src" "C:\\app" /MIR /XD data logs' in bat   # never the user's DB/logs
+    assert 'start "" "C:\\app\\PawPoller.exe"' in bat                  # relaunch the updated exe
+    assert 'del "%~f0"' in bat                                          # script cleans itself up
 
 
 def _extract(tmp_path, layout):
