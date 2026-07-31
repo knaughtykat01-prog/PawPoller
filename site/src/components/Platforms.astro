@@ -13,7 +13,10 @@ const base = import.meta.env.BASE_URL.replace(/\/$/, '');
           class="inline-flex h-12 w-12 items-center justify-center rounded-xl bg-white shadow-sm ring-1 ring-ink-800"
           title={p.name + (p.testing ? ' (undergoing testing)' : '')}
         >
-          <img src={`${base}/platforms/${p.logo}`} alt={p.name} width="28" height="28" class="h-7 w-7 object-contain" loading="lazy" />
+          {p.logo
+            ? <img src={`${base}/platforms/${p.logo}`} alt={p.name} width="28" height="28" class="h-7 w-7 object-contain" loading="lazy" />
+            : <span class="text-sm font-bold tracking-tight text-ink-600">{p.mono ?? p.name.slice(0, 2)}</span>
+          }
         </span>
       ))}
     </div>

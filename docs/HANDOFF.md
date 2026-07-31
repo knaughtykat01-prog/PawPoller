@@ -1,8 +1,15 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-07-31
-**Current version (master):** 2.202.0 — **Fediverse = Mastodon connector now covers Pleroma/Akkoma/GoToSocial/Pixelfed/
-Firefish.** Third expansion item, resolved by **verify-not-duplicate** (the user's call). All those servers implement the
+**Current version (master):** 3.0.0 — **PawPoller 3.0 milestone.** Major-version marker cut from the 2.202.0 tree (no new
+code) to headline the completed platform-expansion sprint + deterministic analytics suite: **19 platforms tracked, posts
+to 12**, full fediverse coverage, all AI-free. Rolls up 2.194–2.202 (repost radar, mislink auditor, weekly digest, tag-perf
+insights, Telegram-channel posting, Library Posted/Drafts filter, FurryNetwork, Furbooru, fediverse-via-Mastodon). Tagged
+`v3.0.0` (CI builds the Win zip + Setup .exe + Linux AppImage). Full suite green (812). Expansion queue parked in backlog
+`PLX2-LATER` (Aryion/Piczel/Picarto/SubscribeStar/Twitter/Reddit) — do NOT auto-resume.
+
+**Prior — 2.202.0 — Fediverse = Mastodon connector now covers Pleroma/Akkoma/GoToSocial/Pixelfed/Firefish.** Third
+expansion item, resolved by **verify-not-duplicate** (the user's call). All those servers implement the
 **Mastodon client API**; the `mast` client is already instance-agnostic (base URL + token, standard `/api/v1/*`,
 `follow_redirects`). Confirmed live by probing `/api/v1/instance` on each flavour. Rather than 4 duplicate stacks, added
 **flavour detection**: `clients/mast/client.py::detect_flavour()` reads the `(compatible; NAME)` tail Pleroma/Akkoma/

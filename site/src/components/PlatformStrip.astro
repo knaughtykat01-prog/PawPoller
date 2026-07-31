@@ -19,7 +19,10 @@ const { items = PLATFORMS, href, linkLabel = 'See the full platform matrix' } = 
       class="inline-flex h-11 w-11 items-center justify-center rounded-xl bg-white shadow-sm ring-1 ring-ink-800"
       title={p.name + (p.testing ? ' (undergoing testing)' : '')}
     >
-      <img src={`${base}/platforms/${p.logo}`} alt={p.name} width="26" height="26" class="h-6 w-6 object-contain" loading="lazy" />
+      {p.logo
+        ? <img src={`${base}/platforms/${p.logo}`} alt={p.name} width="26" height="26" class="h-6 w-6 object-contain" loading="lazy" />
+        : <span class="text-xs font-bold tracking-tight text-ink-600">{p.mono ?? p.name.slice(0, 2)}</span>
+      }
     </span>
   ))}
 </div>

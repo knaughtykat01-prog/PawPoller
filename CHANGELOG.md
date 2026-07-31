@@ -12,6 +12,35 @@ popup, which is usually the wrong thing to show — so write the blockquote.
 
 ---
 
+## [3.0.0] - 2026-07-31 - PawPoller 3.0 — 19 platforms, the whole fediverse, and a deterministic analytics suite
+
+> **PawPoller 3.0.** A milestone release. PawPoller now tracks **19 platforms** — every major furry gallery, the
+> microblogs, the boorus, and the entire Mastodon-compatible fediverse — and posts to **12** of them, all from one place.
+> This version rolls up the platform-expansion sprint (FurryNetwork, Furbooru, and full Pleroma/Akkoma/GoToSocial/Pixelfed
+> coverage) alongside the analytics suite built this cycle: a weekly email digest, tag-performance insights, a repost
+> radar, and follower tracking. Everything stays local-first, artist-friendly, and **100% AI-free** — every "auto" feature
+> is deterministic maths over your own stored data, and nothing is ever sent to a model or to training. Same tool you
+> know, a lot more of it.
+
+Major-version marker. No new code beyond the version bump — 3.0.0 is the same tree as 2.202.0, cut as a headline release to
+mark the completion of the platform-expansion sprint and the deterministic analytics suite. It rolls up everything shipped
+since the 2.19x line:
+
+- **Platforms (17 → 19):** FurryNetwork (`fn`, 2.200 — poll+post, 18th) and Furbooru (`fbr`, 2.201 — poll-only booru,
+  19th, first of the Philomena family via a reusable `base_url` client). The Mastodon connector was extended to officially
+  cover the whole **fediverse** (2.202) — Pleroma, Akkoma, GoToSocial, Pixelfed, Firefish all speak the Mastodon client
+  API, verified live, with automatic server-flavour detection. **Posts to 12 platforms** (e621, FurryNetwork + the 10
+  gallery/story posters), tracks 19.
+- **Analytics (all no-AI, deterministic):** weekly email digest (2.196), tag-performance index + best-pair analysis
+  (2.197), repost radar (2.195), mislink auditor (2.194), Telegram-channel broadcast target (2.198), Library Posted/Drafts
+  filter (2.199).
+- **Positioning held throughout:** no LLM or vision anywhere in the product; every "auto" is heuristics/forms/maths over
+  stored data. Artwork is never deleted (reversible `junk` hide only). See `docs/HANDOFF.md` for the full per-version log.
+
+**Tests:** full suite green (812 passed) as of the 2.202.0 tree this release is cut from.
+
+---
+
 ## [2.202.0] - 2026-07-31 - Fediverse: your Mastodon connection now works with Pleroma, Akkoma, GoToSocial, Pixelfed & more
 
 > **The Mastodon platform now officially covers the whole fediverse.** Pleroma, Akkoma, GoToSocial, Firefish and Pixelfed
