@@ -26,6 +26,7 @@
         { code: 'thr',  label: 'Threads',      emoji: '\u{1F9F5}', color: 'var(--platform-thr)',  pollOnly: true  },
         { code: 'ig',   label: 'Instagram',    emoji: '\u{1F4F8}', color: 'var(--platform-ig)',   pollOnly: true  },
         { code: 'e621', label: 'e621',         emoji: '\u{1F43E}', color: 'var(--platform-e621)', pollOnly: false },
+        { code: 'fn',   label: 'FurryNetwork', emoji: '\u{1F310}', color: '#3b8ed0',               pollOnly: false },
     ];
 
     // Display order is alphabetical by label (case-insensitive) everywhere that

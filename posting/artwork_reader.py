@@ -38,7 +38,7 @@ IMAGE_EXTENSIONS = (".png", ".jpg", ".jpeg", ".gif", ".webp")
 # full artwork target via posting.platforms.instagram.InstagramPoster (reuses the
 # Posts module's public-image-hosting path); it's post-only (no edit/replace API)
 # and needs a public host (IG_PUBLIC_BASE_URL) or a paired server.
-_ALL_POSTER_IDS = ["ib", "fa", "ws", "sf", "da", "ik", "bsky", "e621", "ig"]
+_ALL_POSTER_IDS = ["ib", "fa", "ws", "sf", "da", "ik", "bsky", "e621", "ig", "fn"]
 
 # Metadata filename. The Masterpiece era (Phase 0) writes `masterpiece.json`;
 # legacy folders have `artwork.json`. `masterpiece.json` is a back-compatible

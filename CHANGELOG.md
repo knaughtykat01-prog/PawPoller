@@ -12,6 +12,33 @@ popup, which is usually the wrong thing to show — so write the blockquote.
 
 ---
 
+## [2.200.0] - 2026-07-31 - FurryNetwork — the 18th platform (poll + post)
+
+> **FurryNetwork is now a full platform.** Connect it in Settings → Platforms with your FurryNetwork email + password,
+> and PawPoller tracks your submissions' views, favourites and comments across your characters — with the same dashboard,
+> submissions grid, per-piece charts, comparison and CSV export as every other platform — and lets you post artwork to it
+> too. It also feeds the weekly digest, tag performance, repost radar and follower tracking. Your password is stored
+> encrypted and only used to obtain an access token.
+
+First platform of the expansion (see `docs/specs/platform_expansion_v2.md`). Built across 5 installments (client → DB →
+poller → routes → frontend → posting), each tested. FurryNetwork organises work under **characters**; auth is OAuth2
+(password grant, `client_id=123`), confirmed reachable from the GCP VM (no datacenter block, unlike FA). Response shapes
+are built to CrosspostSharp's reference and **verified live on first connect** (the Threads/IG pattern).
+
+- **Client** `clients/fn/client.py` — OAuth2 password/refresh grant (auto-refresh, rotated tokens persisted), per-character
+  discovery, submission parsing (views/favorites/comments/rating), follower count, chunked/resumable `upload_artwork` + PATCH.
+- **DB** `database/fn_schema.sql` + `fn_queries.py` — `fn_submissions`/`fn_snapshots`/`fn_poll_log`, full query surface.
+- **Poller** `polling/fn_poller.py` — `run_fn_poll_cycle`, wired into the orchestrator + `multi_account` registry.
+- **API** `routes/fn_api.py` (`/api/fn/*`) mounted; session-check registered; connect uses email+password.
+- **Frontend** — `platforms.js` registry, dashboard/submissions/detail/compare renderers, Settings connect form, ~14 API
+  methods, `fnTopList` component. FN flows into digest/insights/tag-perf/repost-radar/followers via the platform maps.
+- **Posting** `posting/platforms/furrynetwork.py` (posts under the default or `extra.fn_character`), registered in the
+  manager + artwork poster targets. FN is `pollOnly:false`.
+- **Config** — `fn` credential fields (email plaintext; password/tokens vaulted).
+
+**Tests:** `tests/test_fn_client.py` (7) + `test_fn_poller.py` (1) + `test_fn_posting.py` (3) — OAuth lifecycle, discovery,
+parsing, follower capture, token rotation, full poll cycle, posting flow, character selection. Network faked throughout.
+
 ## [2.199.0] - 2026-07-31 - Library: filter by Posted / Drafts
 
 > **Show only your posted work, or only your drafts.** The Library gets a new filter next to the sort dropdown —

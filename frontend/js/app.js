@@ -88,6 +88,9 @@ const App = {
     _e621SortState: { field: 'score', order: 'desc' },
     _e621CompareIds: new Set(),
     _e621CompareMetric: 'score',
+    _fnSortState: { field: 'views', order: 'desc' },
+    _fnCompareIds: new Set(),
+    _fnCompareMetric: 'views',
     _twSortState: { field: 'views', order: 'desc' },
     _twCompareIds: new Set(),
     _twCompareMetric: 'views',
@@ -1118,6 +1121,14 @@ const App = {
             this.renderE621Detail(parts[2]);
         } else if (parts[0] === 'e621' && parts[1] === 'compare') {
             this.renderE621Compare();
+        } else if (parts[0] === 'fn' && (!parts[1] || parts[1] === '')) {
+            this.renderFNDashboard();
+        } else if (parts[0] === 'fn' && parts[1] === 'submissions' && !parts[2]) {
+            this.renderFNSubmissions();
+        } else if (parts[0] === 'fn' && parts[1] === 'submission' && parts[2]) {
+            this.renderFNDetail(parts[2]);
+        } else if (parts[0] === 'fn' && parts[1] === 'compare') {
+            this.renderFNCompare();
         } else if (parts[0] === 'tw' && (!parts[1] || parts[1] === '')) {
             this.renderTWDashboard();
         } else if (parts[0] === 'tw' && parts[1] === 'submissions' && !parts[2]) {
@@ -1550,6 +1561,7 @@ const App = {
                 { key: 'ig', auth: auth.igAuth?.has_credentials, name: 'Instagram', statusFn: 'getIGStatus', logFn: 'getIGPollLog', tableFn: 'igPollLogTable' },
                 { key: 'tw', auth: auth.twAuth?.has_credentials, name: 'Twitter', statusFn: 'getTWStatus', logFn: 'getTWPollLog', tableFn: 'twPollLogTable' },
                 { key: 'e621', auth: auth.e621Auth?.has_credentials, name: 'e621', statusFn: 'getE621Status', logFn: 'getE621PollLog', tableFn: 'e621PollLogTable' },
+                { key: 'fn', auth: auth.fnAuth?.has_credentials, name: 'FurryNetwork', statusFn: 'getFNStatus', logFn: 'getFNPollLog', tableFn: 'fnPollLogTable' },
             ];
             // Alphabetical by name (Inkbunny is rendered separately, first).
             platforms.sort((a, b) => a.name.toLowerCase().localeCompare(b.name.toLowerCase()));
@@ -1647,7 +1659,7 @@ const App = {
     _platformLabels: {
         ib: 'Inkbunny', fa: 'FurAffinity', ws: 'Weasyl', sf: 'SoFurry',
         sqw: 'SquidgeWorld', ao3: 'AO3', da: 'DeviantArt', wp: 'Wattpad',
-        ik: 'Itaku', bsky: 'Bluesky', tw: 'X/Twitter', mast: 'Mastodon', tum: 'Tumblr', pix: 'Pixiv', thr: 'Threads', ig: 'Instagram', e621: 'e621',
+        ik: 'Itaku', bsky: 'Bluesky', tw: 'X/Twitter', mast: 'Mastodon', tum: 'Tumblr', pix: 'Pixiv', thr: 'Threads', ig: 'Instagram', e621: 'e621', fn: 'FurryNetwork',
     },
 
     /* Settings → Platforms → "Session health" card. Renders the per-platform
@@ -1655,7 +1667,7 @@ const App = {
      * "Check sessions now" button, which fires the server-side re-validation
      * (fire-and-forget) and reloads the results after it's had time to run. */
     async _initSessionHealthCard() {
-        const CHECKABLE = ['ao3', 'sf', 'sqw', 'bsky', 'mast', 'tum', 'pix', 'thr', 'ig', 'e621'];
+        const CHECKABLE = ['ao3', 'sf', 'sqw', 'bsky', 'mast', 'tum', 'pix', 'thr', 'ig', 'e621', 'fn'];
         const LABELS = (window.PlatformHealth && window.PlatformHealth.LABELS) || {};
         const DOT = { valid: 'connected', expired: 'disconnected', error: 'warn', unconfigured: 'muted' };
         const WORD = { valid: 'Valid', expired: 'Expired', error: 'Unverified', unconfigured: 'Not configured' };
@@ -1755,7 +1767,7 @@ const App = {
      * Falls back to the cached snapshot only if the health fetch fails/empty. */
     async _configuredPollCodes() {
         const ALL = ['ib', 'fa', 'ws', 'sf', 'sqw', 'ao3', 'da', 'wp', 'ik',
-            'bsky', 'tw', 'mast', 'tum', 'pix', 'thr', 'ig', 'e621'];
+            'bsky', 'tw', 'mast', 'tum', 'pix', 'thr', 'ig', 'e621', 'fn'];
         try {
             const health = await API.getPlatformsHealth();
             if (health && typeof health === 'object') {
@@ -1769,7 +1781,8 @@ const App = {
             da: a.daAuth?.has_credentials, wp: a.wpAuth?.has_credentials, ik: a.ikAuth?.has_credentials,
             bsky: a.bskyAuth?.has_credentials, tw: a.twAuth?.has_credentials, mast: a.mastAuth?.has_credentials,
             tum: a.tumAuth?.has_credentials, pix: a.pixAuth?.has_credentials, thr: a.thrAuth?.has_credentials,
-            ig: a.igAuth?.has_credentials, e621: a.e621Auth?.has_credentials };
+            ig: a.igAuth?.has_credentials, e621: a.e621Auth?.has_credentials,
+            fn: a.fnAuth?.has_credentials };
         return ALL.filter(c => cached[c]);
     },
 
@@ -7842,6 +7855,235 @@ const App = {
     // e621 dashboard: Score (score.total, may be negative), Favorites,
     // Comments. e621 exposes no view count, so Score is the headline metric.
 
+    // ── FurryNetwork Dashboard / Submissions / Detail / Compare ──
+
+    async renderFNDashboard() {
+        this._loading();
+        try {
+            const [summary, agg, pins, goals] = await Promise.all([
+                API.getFNSummary({ account_id: this._acctId('fn') }),
+                API.getFNAggregate({ ...Utils.getDateRange(this._dateRange), account_id: this._acctId('fn') }),
+                API.getPins().catch(() => ({ pins: [] })),
+                API.getGoals().catch(() => ({ goals: [] })),
+            ]);
+            const fnPins = (pins.pins || []).filter(p => p.platform === 'fn');
+            const fnGoals = (goals.goals || []).filter(g => g.platform === 'fn' || g.platform === 'all');
+            const fnHealth = window.PlatformHealth && window.PlatformHealth.get('fn');
+            const isUnconfigured = fnHealth && fnHealth.configured === false;
+            if (isUnconfigured || (summary.total_submissions || 0) === 0) {
+                this._setContent(`
+                    ${this._refreshIndicatorHtml()}
+                    <div class="page-header"><h2>FurryNetwork Dashboard</h2></div>
+                    ${Components.platformEmptyState('fn', isUnconfigured ? {} : { reason: 'FurryNetwork is configured but no submissions have been polled yet. The first poll may still be running.' })}
+                `);
+                return;
+            }
+            const html = `
+                ${this._refreshIndicatorHtml()}
+                <div class="page-header">
+                    <h2>FurryNetwork Dashboard</h2>
+                    <div style="display:flex;gap:8px">
+                        <button class="btn btn-primary" data-poll="fn">Poll Now</button>
+                        <button class="btn btn-secondary" data-resync="fn">Full Resync</button>
+                        <button class="btn btn-secondary" data-export="fn">Export CSV</button>
+                    </div>
+                </div>
+                ${fnPins.length ? Components.pinnedSubmissions(fnPins, 'fn') : ''}
+                ${fnGoals.length ? `<div class="goals-section"><h3>Goals</h3>${Components.goalProgressCards(fnGoals)}</div>` : ''}
+                <div class="stats-grid">
+                    ${Components.statCard('Total Submissions', summary.total_submissions, null, '#/fn/submissions')}
+                    ${Components.statCard('Total Views', summary.total_views || 0)}
+                    ${Components.statCard('Total Favorites', summary.total_favorites || 0)}
+                    ${Components.statCard('Total Comments', summary.total_comments || 0)}
+                </div>
+                ${summary.growth_rates ? Components.growthRateCards(summary.growth_rates, { views: 'views/day', faves: 'faves/day', comments: 'comments/day' }) : ''}
+                ${Components.dateRangeBar(this._dateRange)}
+                <div class="chart-container">
+                    <h3>Views Over Time (Aggregate)</h3>
+                    <div class="chart-wrap"><canvas id="chart-agg-views"></canvas></div>
+                </div>
+                <div class="chart-row">
+                    <div class="chart-container"><h3>Top Viewed</h3>${Components.fnTopList(summary.top_viewed, 'views', 'title', 'submission_id')}</div>
+                    <div class="chart-container"><h3>Top Favorited</h3>${Components.fnTopList(summary.top_faved, 'favorites_count', 'title', 'submission_id')}</div>
+                </div>
+                <div class="chart-row">
+                    <div class="chart-container"><h3>Fastest Growing (24h)</h3>${Components.fnTopList(summary.fastest_growing, 'views_gained', 'title', 'submission_id')}</div>
+                </div>
+            `;
+            this._setContent(html);
+            if (agg.snapshots && agg.snapshots.length > 0) {
+                Charts.aggregateLine('chart-agg-views', agg.snapshots, ['views']);
+            }
+            this._bindDateRange(() => this.renderFNDashboard());
+            this._bindPinAndGoalActions(() => this.renderFNDashboard());
+            this._startAutoRefresh(() => this.renderFNDashboard());
+        } catch (err) {
+            this._setContent(`<div class="empty-state"><h3>Error loading FurryNetwork dashboard</h3><p>${Utils.escapeHtml(err.message)}</p></div>`);
+        }
+    },
+
+    async renderFNSubmissions() {
+        this._loading();
+        try {
+            const data = await API.getFNSubmissions({
+                sort_by: this._fnSortState.field, order: this._fnSortState.order, account_id: this._acctId('fn'),
+            });
+            const gridRenderer = (subs) => Components.submissionCardGrid(subs, {
+                idKey: 'submission_id', titleKey: 'title', thumbKey: 'thumbnail_url', proxyThumb: false,
+                typeKey: 'content_type', typeLabels: Components.E621_TYPE_LABELS,
+                detailRoute: '/fn/submission', dateKey: 'posted_at',
+                stats: [
+                    { key: 'views', deltaKey: 'views_delta', label: 'views' },
+                    { key: 'favorites_count', deltaKey: 'favorites_delta', label: 'favorites' },
+                    { key: 'comments_count', deltaKey: 'comments_delta', label: 'comments' },
+                ],
+            });
+            const html = `
+                ${this._refreshIndicatorHtml()}
+                <div class="page-header"><h2>FurryNetwork Submissions</h2></div>
+                <div class="toolbar">
+                    <input type="text" class="search-input" id="search-input" placeholder="Search submissions...">
+                    <select class="filter-select" id="fn-sort">
+                        <option value="views" ${this._fnSortState.field === 'views' ? 'selected' : ''}>Most viewed</option>
+                        <option value="favorites_count" ${this._fnSortState.field === 'favorites_count' ? 'selected' : ''}>Most favorited</option>
+                        <option value="comments_count" ${this._fnSortState.field === 'comments_count' ? 'selected' : ''}>Most comments</option>
+                        <option value="posted_at" ${this._fnSortState.field === 'posted_at' ? 'selected' : ''}>Newest</option>
+                    </select>
+                </div>
+                <div id="grid-container">${gridRenderer(data.submissions)}</div>
+            `;
+            this._setContent(html);
+            const sortSel = document.getElementById('fn-sort');
+            if (sortSel) sortSel.addEventListener('change', () => { this._fnSortState.field = sortSel.value; this.renderFNSubmissions(); });
+            const searchInput = document.getElementById('search-input');
+            if (searchInput) searchInput.addEventListener('input', () => {
+                const q = searchInput.value.toLowerCase();
+                document.getElementById('grid-container').innerHTML =
+                    gridRenderer(data.submissions.filter(s => (s.title || '').toLowerCase().includes(q)));
+            });
+            this._startAutoRefresh(() => this.renderFNSubmissions());
+        } catch (err) {
+            this._setContent(`<div class="empty-state"><h3>Error loading FurryNetwork submissions</h3><p>${Utils.escapeHtml(err.message)}</p></div>`);
+        }
+    },
+
+    async renderFNDetail(postId) {
+        this._loading();
+        try {
+            const [data, pins, allTags] = await Promise.all([
+                API.getFNSubmission(postId),
+                API.getPins().catch(() => ({ pins: [] })),
+                API.getTags().catch(() => ({ tags: [] })),
+            ]);
+            const sub = data.submission;
+            const fullId = sub.submission_id;
+            const isPinned = (pins.pins || []).some(p => p.platform === 'fn' && String(p.submission_id) === String(fullId));
+            const currentTags = sub.tags || [];
+            const html = `
+                ${this._refreshIndicatorHtml()}
+                <a href="#/fn/submissions" class="back-link">&larr; Back to FurryNetwork Submissions</a>
+                <div class="detail-header">
+                    ${sub.thumbnail_url ? `<img class="detail-thumb" src="${Utils.escapeHtml(Utils.safeUrl(sub.thumbnail_url) || '')}" alt="" style="max-width:160px;border-radius:8px;margin-right:16px">` : ''}
+                    <div class="detail-info">
+                        <h2>${Utils.escapeHtml(sub.title)}</h2>
+                        <div class="detail-meta">by ${Utils.escapeHtml(sub.username)} &middot; ${Utils.formatDate(sub.posted_at)}${sub.rating ? ' &middot; ' + Utils.escapeHtml(sub.rating) : ''}</div>
+                        <div class="detail-meta"><a href="${Utils.escapeHtml(Utils.safeUrl(sub.link) || '#')}" target="_blank">View on FurryNetwork</a></div>
+                        <div class="detail-stats">
+                            <div class="detail-stat">${Utils.formatNumber(sub.views || 0)} <span class="lbl">views</span></div>
+                            <div class="detail-stat">${Utils.formatNumber(sub.favorites_count || 0)} <span class="lbl">favorites</span></div>
+                            <div class="detail-stat">${Utils.formatNumber(sub.comments_count || 0)} <span class="lbl">comments</span></div>
+                        </div>
+                        <div style="margin-top:8px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+                            <button class="btn ${isPinned ? 'btn-danger' : 'btn-secondary'} btn-pin" data-platform="fn" data-id="${Utils.escapeHtml(fullId)}" style="padding:4px 10px;font-size:12px">${isPinned ? 'Unpin' : 'Pin'}</button>
+                            ${currentTags.map(t => Components.tagBadge(t)).join('')}
+                            <button class="btn btn-secondary btn-add-tag" data-platform="fn" data-id="${Utils.escapeHtml(fullId)}" style="padding:4px 10px;font-size:12px">+ Tag</button>
+                        </div>
+                        <div style="margin-top:8px">${Components.keywords(sub.keywords)}</div>
+                    </div>
+                </div>
+                ${Components.growthRateCards(data.growth_rates, { views: 'views/day', faves: 'faves/day', comments: 'comments/day' })}
+                ${Components.dateRangeBar(this._dateRange)}
+                <div class="chart-container"><h3>Stats Over Time</h3><div class="chart-wrap"><canvas id="chart-detail"></canvas></div></div>
+            `;
+            this._setContent(html);
+            if (data.snapshots && data.snapshots.length > 0) {
+                Charts.submissionLine('chart-detail', data.snapshots, ['views', 'favorites_count', 'comments_count']);
+            }
+            this._bindDateRange(async () => {
+                const range = Utils.getDateRange(this._dateRange);
+                const snaps = await API.getFNSnapshots(postId, range);
+                Charts.submissionLine('chart-detail', snaps.snapshots, ['views', 'favorites_count', 'comments_count']);
+            });
+            this._bindDetailPinTag('fn', fullId, allTags.tags || [], () => this.renderFNDetail(postId));
+            this._startAutoRefresh(() => this.renderFNDetail(postId));
+        } catch (err) {
+            this._setContent(`<div class="empty-state"><h3>Error loading FurryNetwork submission</h3><p>${Utils.escapeHtml(err.message)}</p></div>`);
+        }
+    },
+
+    async renderFNCompare() {
+        this._loading();
+        try {
+            const data = await API.getFNSubmissions({ sort_by: 'views', order: 'desc', account_id: this._acctId('fn') });
+            const subs = data.submissions;
+            const chips = subs.map(s => `
+                <label class="compare-chip ${this._fnCompareIds.has(String(s.submission_id)) ? 'selected' : ''}" data-id="${Utils.escapeHtml(String(s.submission_id))}">
+                    <input type="checkbox" ${this._fnCompareIds.has(String(s.submission_id)) ? 'checked' : ''}>
+                    ${Utils.escapeHtml(Utils.truncate(s.title, 25))}
+                </label>`).join('');
+            const html = `
+                ${this._refreshIndicatorHtml()}
+                <div class="page-header">
+                    <h2>Compare FurryNetwork Submissions</h2>
+                    <div>
+                        <select class="filter-select" id="compare-metric">
+                            <option value="views" ${this._fnCompareMetric === 'views' ? 'selected' : ''}>Views</option>
+                            <option value="favorites_count" ${this._fnCompareMetric === 'favorites_count' ? 'selected' : ''}>Favorites</option>
+                            <option value="comments_count" ${this._fnCompareMetric === 'comments_count' ? 'selected' : ''}>Comments</option>
+                        </select>
+                    </div>
+                </div>
+                <p style="font-size:13px;color:var(--text-muted);margin-bottom:12px">Select 2-5 submissions to compare their trends over time.</p>
+                <div class="compare-select">${chips}</div>
+                ${Components.dateRangeBar(this._dateRange)}
+                <div class="chart-container" id="compare-chart-container" style="${this._fnCompareIds.size < 2 ? 'display:none' : ''}">
+                    <h3>Comparison</h3><div class="chart-wrap"><canvas id="chart-compare"></canvas></div>
+                </div>
+                ${this._fnCompareIds.size < 2 ? '<div class="empty-state"><p>Select at least 2 submissions above to see their trends compared.</p></div>' : ''}
+            `;
+            this._setContent(html);
+            document.querySelectorAll('.compare-chip').forEach(chip => {
+                chip.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    const id = chip.dataset.id;
+                    if (this._fnCompareIds.has(id)) this._fnCompareIds.delete(id);
+                    else if (this._fnCompareIds.size < 5) this._fnCompareIds.add(id);
+                    this.renderFNCompare();
+                });
+            });
+            const metricSelect = document.getElementById('compare-metric');
+            if (metricSelect) metricSelect.addEventListener('change', () => { this._fnCompareMetric = metricSelect.value; this._loadFNComparisonChart(); });
+            this._bindDateRange(() => this._loadFNComparisonChart());
+            if (this._fnCompareIds.size >= 2) await this._loadFNComparisonChart();
+            this._startAutoRefresh(() => this.renderFNCompare());
+        } catch (err) {
+            this._setContent(`<div class="empty-state"><h3>Error</h3><p>${Utils.escapeHtml(err.message)}</p></div>`);
+        }
+    },
+
+    async _loadFNComparisonChart() {
+        try {
+            if (this._fnCompareIds.size < 2) return;
+            const range = Utils.getDateRange(this._dateRange);
+            const data = await API.getFNComparison([...this._fnCompareIds], range);
+            const container = document.getElementById('compare-chart-container');
+            if (container) container.style.display = '';
+            Charts.comparisonLine('chart-compare', data.series, data.titles, this._fnCompareMetric);
+        } catch (e) {
+            console.error('Failed to load FN comparison chart:', e);
+        }
+    },
+
     async renderE621Dashboard() {
         this._loading();
         try {
@@ -9590,7 +9832,7 @@ const App = {
         try {
             // Core settings: only fetch what General/Platforms/Telegram/Data/About tabs need.
             // Polling tab data is loaded lazily when the user clicks into it.
-            const [creds, prefs, telegram, tgFeatures, pollPausedState, faAuth, wsAuth, sfAuth, sqwAuth, ao3Auth, daAuth, wpAuth, ikAuth, bskyAuth, twAuth, mastAuth, tumAuth, pixAuth, thrAuth, igAuth, e621Auth, updateInfo, postingSettings, browserLoginInfo, setupStatus, digest, tgChannel] = await Promise.all([
+            const [creds, prefs, telegram, tgFeatures, pollPausedState, faAuth, wsAuth, sfAuth, sqwAuth, ao3Auth, daAuth, wpAuth, ikAuth, bskyAuth, twAuth, mastAuth, tumAuth, pixAuth, thrAuth, igAuth, e621Auth, updateInfo, postingSettings, browserLoginInfo, setupStatus, digest, tgChannel, fnAuth] = await Promise.all([
                 API.getCredentials(),
                 API.getPreferences(),
                 API.getTelegram(),
@@ -9618,6 +9860,7 @@ const App = {
                 API.getSetupStatus().catch(() => ({ runtime_mode: 'desktop', setup_mode: null, polling_owner: 'local' })),
                 API.getDigestStatus().catch(() => ({ enabled: false, interval_days: 7, recipients: [], recipients_raw: '', smtp_host: 'smtp.gmail.com', smtp_port: 587, smtp_username: '', smtp_from: '', smtp_use_tls: true, has_password: false, last_sent_at: null })),
                 API.getTelegramChannel().catch(() => ({ channel: '', has_own_token: false, uses_notification_bot: false, configured: false })),
+                API.getFNAuthStatus().catch(() => ({ has_credentials: false, username: '' })),
             ]);
 
             // Resolve effective mode for hide/show logic. Falls back to inferred
@@ -11591,6 +11834,44 @@ const App = {
                     <div style="margin-top:12px;display:flex;align-items:center;gap:8px">
                         <button class="btn btn-primary" id="e621-connect-btn">Connect</button>
                         <span id="e621-msg" style="font-size:13px"></span>
+                    </div>
+                    `}
+                    </div>
+                </details>
+
+                <details class="settings-accordion">
+                    <summary><span class="status-dot ${fnAuth.has_credentials ? 'connected' : 'disconnected'}"></span>FurryNetwork${fnAuth.has_credentials ? ` <span class="summary-meta">— ${Utils.escapeHtml(fnAuth.username || '')}</span>` : ''}</summary>
+                    <div class="accordion-body">
+                    ${fnAuth.has_credentials ? `
+                    <div class="settings-row">
+                        <div><span class="settings-label">Status</span></div>
+                        <span class="telegram-status connected">Connected — tracking ${Utils.escapeHtml(fnAuth.username || '')}</span>
+                    </div>
+                    <div class="settings-row" style="margin-top:8px">
+                        <div>
+                            <span class="settings-label">FurryNetwork desktop notifications</span>
+                            <div style="font-size:11px;color:var(--text-muted);margin-top:2px">Toast + Telegram alerts for FurryNetwork activity</div>
+                        </div>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="pref-fn-notifications" ${prefs.fn_notifications_enabled ? 'checked' : ''}>
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </div>
+                    <div style="margin-top:12px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+                        <button class="btn btn-primary" id="fn-poll-btn">FurryNetwork Poll Now</button>
+                        <button class="btn btn-secondary" id="fn-resync-btn">Full Resync</button>
+                        <button class="btn btn-danger" id="fn-disconnect-btn">Disconnect</button>
+                        <span id="fn-msg" style="font-size:13px"></span>
+                    </div>
+                    ` : `
+                    <p style="color:var(--text-muted);font-size:13px;margin-bottom:12px">Connect to FurryNetwork with your <strong>account email + password</strong>. Poll+post — tracks your submissions' views, favourites and comments across your characters. Your password is stored encrypted and only used to obtain an access token.</p>
+                    <div style="display:flex;flex-direction:column;gap:8px;max-width:400px">
+                        <input type="text" id="fn-username" class="search-input" placeholder="FurryNetwork email" autocomplete="username">
+                        <input type="password" id="fn-password" class="search-input" placeholder="FurryNetwork password" autocomplete="current-password">
+                    </div>
+                    <div style="margin-top:12px;display:flex;align-items:center;gap:8px">
+                        <button class="btn btn-primary" id="fn-connect-btn">Connect</button>
+                        <span id="fn-msg" style="font-size:13px"></span>
                     </div>
                     `}
                     </div>
@@ -13929,6 +14210,72 @@ const App = {
                 e621NotifToggle.addEventListener('change', async (e) => {
                     try {
                         await API.savePreferences({ e621_notifications_enabled: e.target.checked });
+                    } catch (err) {
+                        e.target.checked = !e.target.checked;
+                        alert('Failed to save preference: ' + err.message);
+                    }
+                });
+            }
+
+            // ── FurryNetwork connect / disconnect / poll / notifications ──
+            const fnConnectBtn = document.getElementById('fn-connect-btn');
+            if (fnConnectBtn) {
+                fnConnectBtn.addEventListener('click', async () => {
+                    const msg = document.getElementById('fn-msg');
+                    const username = document.getElementById('fn-username').value.trim();
+                    const password = document.getElementById('fn-password').value;
+                    if (!username || !password) {
+                        msg.textContent = 'Email and password are required';
+                        msg.style.color = 'var(--danger)';
+                        return;
+                    }
+                    fnConnectBtn.disabled = true;
+                    fnConnectBtn.textContent = 'Connecting...';
+                    msg.textContent = '';
+                    try {
+                        await API.fnConnect({ username, password });
+                        msg.textContent = 'Connected!';
+                        msg.style.color = 'var(--success)';
+                        setTimeout(() => this.renderSettings(), 1000);
+                    } catch (err) {
+                        let detail = err.message.replace(/^API \d+:\s*/, '');
+                        try { detail = JSON.parse(detail).detail || detail; } catch {}
+                        msg.textContent = detail;
+                        msg.style.color = 'var(--danger)';
+                        fnConnectBtn.textContent = 'Connect';
+                        fnConnectBtn.disabled = false;
+                    }
+                });
+            }
+            const fnDisconnectBtn = document.getElementById('fn-disconnect-btn');
+            if (fnDisconnectBtn) {
+                fnDisconnectBtn.addEventListener('click', async () => {
+                    if (!confirm('Disconnect FurryNetwork? This clears your credentials.')) return;
+                    try {
+                        await API.fnDisconnect();
+                        this.renderSettings();
+                    } catch (err) {
+                        alert('Failed: ' + err.message);
+                    }
+                });
+            }
+            const fnPollBtn = document.getElementById('fn-poll-btn');
+            if (fnPollBtn) {
+                fnPollBtn.addEventListener('click', () => this._pollingTabPoll({
+                    btn: fnPollBtn, msgId: 'fn-msg', platform: 'fn', apiMethod: 'triggerFNPoll',
+                }));
+            }
+            const fnResyncBtn = document.getElementById('fn-resync-btn');
+            if (fnResyncBtn) {
+                fnResyncBtn.addEventListener('click', () => this._pollingTabResync({
+                    btn: fnResyncBtn, msgId: 'fn-msg', platform: 'fn', apiMethod: 'fullFNResync',
+                }));
+            }
+            const fnNotifToggle = document.getElementById('pref-fn-notifications');
+            if (fnNotifToggle) {
+                fnNotifToggle.addEventListener('change', async (e) => {
+                    try {
+                        await API.savePreferences({ fn_notifications_enabled: e.target.checked });
                     } catch (err) {
                         e.target.checked = !e.target.checked;
                         alert('Failed to save preference: ' + err.message);

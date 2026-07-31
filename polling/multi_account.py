@@ -44,13 +44,14 @@ def get_poll_cycles() -> dict:
     from polling.thr_poller import run_thr_poll_cycle
     from polling.ig_poller import run_ig_poll_cycle
     from polling.e621_poller import run_e621_poll_cycle
+    from polling.fn_poller import run_fn_poll_cycle
     return {
         "ib": run_poll_cycle, "fa": run_fa_poll_cycle, "ws": run_ws_poll_cycle,
         "da": run_da_poll_cycle, "wp": run_wp_poll_cycle, "ik": run_ik_poll_cycle,
         "bsky": run_bsky_poll_cycle, "tw": run_tw_poll_cycle, "sf": run_sf_poll_cycle,
         "sqw": run_sqw_poll_cycle, "ao3": run_ao3_poll_cycle, "mast": run_mast_poll_cycle,
         "tum": run_tum_poll_cycle, "pix": run_pix_poll_cycle, "thr": run_thr_poll_cycle,
-        "ig": run_ig_poll_cycle, "e621": run_e621_poll_cycle,
+        "ig": run_ig_poll_cycle, "e621": run_e621_poll_cycle, "fn": run_fn_poll_cycle,
     }
 
 

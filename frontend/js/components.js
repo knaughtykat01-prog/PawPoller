@@ -1569,6 +1569,19 @@ const Components = {
         return `<ul class="top-list">${lis}</ul>`;
     },
 
+    fnTopList(items, valueKey, labelKey = 'title', idKey = 'submission_id') {
+        if (!items || items.length === 0) {
+            return '<p style="color:var(--text-muted);font-size:13px">No data yet</p>';
+        }
+        const lis = items.map(item => `
+            <li>
+                <span class="top-title" data-nav="/fn/submission/${encodeURIComponent(item[idKey])}">${Utils.escapeHtml(Utils.truncate(item[labelKey], 30))}</span>
+                <span class="top-value">${Utils.formatCompact(item[valueKey])}</span>
+            </li>
+        `).join('');
+        return `<ul class="top-list">${lis}</ul>`;
+    },
+
     /**
      * e621-specific submissions table.
      * Columns: Title, Type, Score, Favorites, Comments, Posted. e621 has no

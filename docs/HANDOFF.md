@@ -1,7 +1,21 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-07-31
-**Current version (master):** 2.198.0 — **Post to a Telegram channel.** Fifth deterministic (NO-AI) roadmap item.
+**Current version (master):** 2.200.0 — **FurryNetwork = the 18th platform (poll+post).** First of the platform
+expansion (`docs/specs/platform_expansion_v2.md`). Code `fn`. OAuth2 password grant (`client_id=123`, VM-reachable, no
+datacenter block); work grouped under FN **characters**. Full stack: `clients/fn/client.py` (auth/refresh/token-rotation,
+per-character discovery, parse, follower count, chunked upload), `database/fn_schema.sql`+`fn_queries.py`
+(fn_submissions/snapshots/poll_log, views metric), `polling/fn_poller.py` (orchestrator + `multi_account`),
+`routes/fn_api.py` (`/api/fn/*` mounted), session-check registered, full frontend (registry/dashboard/subs/detail/
+compare/connect form/~14 API methods/`fnTopList`), posting (`posting/platforms/furrynetwork.py` + manager + artwork
+targets, `pollOnly:false`). FN feeds digest/insights/tag-perf/repost-radar/followers via the platform maps. Connect =
+email+password (vaulted). **Response shapes built to CrosspostSharp's reference — VERIFY LIVE on first connect** (needs
+the user's FN login; Threads/IG pattern). +11 tests. **Expansion roadmap:** next Furbooru (Philomena), fediverse batch
+(reuse `mast`), Aryion, Piczel/Picarto, SubscribeStar; Reddit own track.
+
+**Prior — 2.199.0 — Library Posted/Drafts filter** (bookshelf `_status` off `publication_count`).
+
+**Prior — 2.198.0 — Post to a Telegram channel.** Fifth deterministic (NO-AI) roadmap item.
 Telegram is a POST-ONLY broadcast target → it lives in the **Posts module** (with bsky/mast/thr/tw/tum/ig), NOT the
 pollable `window.PLATFORMS` registry (no dashboard/stats to poll). New `clients/tg/client.py` `TgClient`: `sendMessage`
 (text) / `sendPhoto` (1 img, `has_spoiler` for NSFW) / `sendMediaGroup` (2–10); normalises channel + builds `t.me`
