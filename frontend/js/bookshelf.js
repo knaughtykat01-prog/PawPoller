@@ -33,6 +33,7 @@ window.Bookshelf = {
     _persona: 0,       // 0 = all
     _search: '',
     _sort: 'recent',   // recent | title | platforms
+    _status: 'all',    // all | posted | drafts — filter by publish state
     _discCount: 0,     // discovered-segment badge (filled by _loadDiscovered)
 
     /* Valid #/library/type/{t} targets — guards the deep-link + the redirects
@@ -218,6 +219,11 @@ window.Bookshelf = {
                     <option value="favorites">Most favourited</option>
                     <option value="comments">Most comments</option>
                     <option value="series">Series</option>
+                </select>
+                <select id="shelf-status" class="shelf-input shelf-sort" title="Filter by publish state">
+                    <option value="all">All works</option>
+                    <option value="posted">Posted</option>
+                    <option value="drafts">Drafts</option>
                 </select>`;
         el.innerHTML = `
             <div class="shelf-controls">
@@ -233,6 +239,8 @@ window.Bookshelf = {
         if (se) se.addEventListener('input', () => { this._search = se.value; this._paint(); });
         const so = el.querySelector('#shelf-sort');
         if (so) { so.value = this._sort; so.addEventListener('change', () => { this._sort = so.value; this._paint(); }); }
+        const st = el.querySelector('#shelf-status');
+        if (st) { st.value = this._status; st.addEventListener('change', () => { this._status = st.value; this._paint(); }); }
     },
 
     /* Switch segment IN PLACE — no re-fetch, no router round-trip (the works are
@@ -257,6 +265,11 @@ window.Bookshelf = {
         let list = this._works.slice();
         if (this._type !== 'all') list = list.filter(w => w.content_type === this._type);
         if (this._persona) list = list.filter(w => (w.persona_ids || []).includes(this._persona));
+        // Publish-state filter (2.199.0): a work is "posted" once it's live on ≥1
+        // platform, else it's a local draft. Uses publication_count already on
+        // each work — no extra fetch.
+        if (this._status === 'posted') list = list.filter(w => (w.publication_count || 0) > 0);
+        else if (this._status === 'drafts') list = list.filter(w => (w.publication_count || 0) === 0);
         if (this._search) {
             const q = this._search.toLowerCase();
             list = list.filter(w => (w.title || '').toLowerCase().includes(q) || (w.name || '').toLowerCase().includes(q));

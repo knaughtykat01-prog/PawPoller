@@ -12,6 +12,16 @@ popup, which is usually the wrong thing to show — so write the blockquote.
 
 ---
 
+## [2.199.0] - 2026-07-31 - Library: filter by Posted / Drafts
+
+> **Show only your posted work, or only your drafts.** The Library gets a new filter next to the sort dropdown —
+> "All works / Posted / Drafts". Posted = anything you've published to at least one platform; Drafts = pieces still
+> sitting local, not shared anywhere yet.
+
+- **`bookshelf.js`** — new `_status` filter ('all' | 'posted' | 'drafts') with a select beside `#shelf-sort`. Applied in
+  `_filtered()` using each work's existing `publication_count` (posted = `>0`, drafts = `0`) — client-side, no extra
+  fetch. Works across all segments (Stories / Artwork / Masterpieces) and composes with the persona/search/sort controls.
+
 ## [2.198.0] - 2026-07-31 - Post to a Telegram channel
 
 > **Broadcast your Posts to a Telegram channel.** Telegram is now a target in the Posts composer, alongside Bluesky,
