@@ -29,15 +29,20 @@ the poll stats already collected — no model, no external calls.
   whatever snapshot history exists — honest about the young tracking window, fills in over time.
 - **`analytics_queries.get_repost_candidates(conn, min_age_days=60, limit=25)`** — pools `get_publications_with_stats(
   content_type="artwork")` by piece: sums views/faves/comments (normalising `hits`/`reads` → views, `kudos`/`votes` →
-  faves), takes the newest `first_posted_at` as "last shared", and keeps one deep-link per platform. Gates to
-  `age_days >= min_age_days`, drops zero-engagement/never-polled pieces, scores `faves*3 + views + comments*5`, sorts desc.
+  faves) and keeps one deep-link per platform. **Age anchors on the REAL gallery upload date**, read from the gallery
+  submission tables (`_artwork_gallery_dates` via `INSIGHT_TABLES`/`INSIGHT_DATE_COL`), NOT `publications.first_posted_at`
+  — that column is the PawPoller *import* date for back-catalogue art (all recent), which made the radar return nothing.
+  Microblogs/e621 are excluded from the anchor (their dates are recent crossposts); import date is the last-resort
+  fallback. Gates to `age_days >= min_age_days`, drops zero-engagement/never-polled pieces, scores `faves*3 + views +
+  comments*5`, sorts desc.
 - **Frontend:** new `#/repost-radar` page + nav link under **Insights & Tools** (`renderRepostRadar` in `app.js`,
   `API.getRepostRadar`). Card grid (thumb, title, "last shared N months ago", stats, platform chips that deep-link to the
   original post) + a following-now strip. An age dropdown (30/60/90/180/365) re-fetches. Empty state nudges you to lower
   the filter.
 
-**Tests:** `tests/test_repost_radar.py` — gates out too-new and zero-engagement pieces, pools stats + links across two
-platforms, verifies the score, and confirms lowering the age filter reveals newer pieces.
+**Tests:** `tests/test_repost_radar.py` (4) — gates out too-new and zero-engagement pieces, pools stats + links across
+two platforms, verifies the score, confirms lowering the age filter reveals newer pieces, and locks the key fix: a
+piece imported today but really posted to FA in 2019 surfaces, while one really posted 3 days ago does not.
 
 ## [2.194.0] - 2026-07-31 - Wrong-link auditor for Masterpieces (+ auto-backups on)
 

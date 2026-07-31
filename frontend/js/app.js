@@ -15412,7 +15412,7 @@ const App = {
                         <a href="${c.detail_route}" style="text-decoration:none;color:inherit">
                             <div style="font-weight:600;line-height:1.3;margin-bottom:2px">${Utils.escapeHtml(c.title || c.name)}</div>
                         </a>
-                        <div class="muted" style="font-size:12px;margin-bottom:8px">last shared ${this._repostAgeLabel(c.age_days)}</div>
+                        <div class="muted" style="font-size:12px;margin-bottom:8px">posted ~${this._repostAgeLabel(c.age_days)}</div>
                         <div style="display:flex;gap:12px;font-size:13px;margin-bottom:10px">
                             <span title="views">&#128065; ${Utils.formatNumber(c.views)}</span>
                             <span title="faves">&#10084;&#65039; ${Utils.formatNumber(c.faves)}</span>

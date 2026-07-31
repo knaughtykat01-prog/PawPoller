@@ -75,6 +75,32 @@ def test_pools_across_platforms_and_scores():
         conn.close()
 
 
+def test_anchors_on_real_gallery_date_not_import_date():
+    """The bug this feature was rewritten around: publications.first_posted_at is
+    the PawPoller *import* date (all recent) for back-catalogue art, so age must
+    come from the gallery submission's real posted_at instead. Both pieces here
+    are 'imported today'; only their true FA upload dates differ."""
+    conn = get_connection()
+    try:
+        conn.execute("INSERT INTO fa_submissions (submission_id, title, posted_at, "
+                     "views, favorites_count, comments_count) "
+                     "VALUES (500,'Vintage','2019-08-11 19:17:50',300,30,4)")
+        conn.execute("INSERT INTO fa_submissions (submission_id, title, posted_at, "
+                     "views, favorites_count, comments_count) "
+                     "VALUES (600,'Recent',datetime('now','-3 days'),300,30,4)")
+        for name, ext in (("Vintage", "500"), ("Recent", "600")):
+            posting_queries.upsert_publication(
+                conn, name, 0, "fa", content_type="artwork",
+                external_id=ext, external_url="http://fa/" + ext)
+        conn.commit()  # import date (first_posted_at) is 'now' for BOTH
+
+        names = {r["name"] for r in aq.get_repost_candidates(conn, min_age_days=90)}
+        assert "Vintage" in names       # real FA date is 2019 → old → surfaces
+        assert "Recent" not in names     # real FA date is 3 days ago → too new
+    finally:
+        conn.close()
+
+
 def test_lowering_age_filter_reveals_newer_pieces():
     conn = get_connection()
     try:

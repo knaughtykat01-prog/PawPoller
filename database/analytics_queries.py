@@ -765,22 +765,67 @@ def get_posting_insights(conn: sqlite3.Connection, tz_offset_minutes: int = 0) -
             "weekday": _buckets(weekday), "hour": _buckets(hour)}
 
 
+# The "gallery" platforms whose submission `posted_at` is the artwork's REAL
+# original post date (what makes a piece "old"). Publications.first_posted_at is
+# the PawPoller *import* date for back-catalogue art — useless for age — so the
+# radar anchors on these instead. Microblogs (tw/bsky/…) and e621 are excluded
+# from the age anchor: their dates are recent crossposts/re-uploads, not the
+# art's origin. They still count for links.
+_GALLERY_DATE_PLATFORMS = {"ib", "fa", "ws", "sf", "sqw", "ao3", "wp", "da", "ik"}
+
+
+def _artwork_gallery_dates(conn: sqlite3.Connection, pubs: list[dict]) -> dict:
+    """Map (platform, str(external_id)) -> the platform's REAL posted-at string,
+    read from the gallery submission tables (the authentic upload date polling
+    captured). Batched: one query per platform, chunked under SQLite's var cap."""
+    ids_by_plat: dict[str, set] = {}
+    for p in pubs:
+        plat = p.get("platform")
+        ext = p.get("external_id")
+        if plat in _GALLERY_DATE_PLATFORMS and plat in INSIGHT_TABLES and ext:
+            ids_by_plat.setdefault(plat, set()).add(ext)
+    out: dict[tuple, str] = {}
+    for plat, ids in ids_by_plat.items():
+        table = INSIGHT_TABLES[plat]
+        date_col = INSIGHT_DATE_COL.get(plat, "posted_at")
+        id_list = list(ids)
+        for i in range(0, len(id_list), 900):
+            chunk = id_list[i:i + 900]
+            norm = [int(x) if str(x).isdigit() else x for x in chunk]
+            ph = ",".join("?" * len(norm))
+            try:
+                rows = conn.execute(
+                    f"SELECT submission_id AS sid, {date_col} AS d FROM {table} "
+                    f"WHERE submission_id IN ({ph})", norm).fetchall()
+            except sqlite3.OperationalError:
+                continue   # table/column/id-col mismatch on this install — skip
+            for r in rows:
+                if r["d"]:
+                    out[(plat, str(r["sid"]))] = r["d"]
+    return out
+
+
 def get_repost_candidates(conn: sqlite3.Connection, min_age_days: int = 60,
                           limit: int = 25) -> list[dict]:
     """Older, well-performing ARTWORK worth resurfacing to your feed.
 
     Pools each piece's artwork publications across every platform, ranks by
-    pooled engagement, and gates to pieces you haven't posted in ``min_age_days``.
-    Fully deterministic — no model involved: it reads your own publication dates
-    plus the view/fave/comment counts the pollers already collected. The route
-    layers on follower-growth-since-post context where the (young) follower
-    history covers a piece; this core is purely the age + engagement ranking.
+    pooled engagement, and gates to pieces whose ORIGINAL gallery post is older
+    than ``min_age_days``. Fully deterministic — no model involved: it reads the
+    real upload dates + the view/fave/comment counts the pollers already
+    collected. The route layers on follower-growth-since-post context where the
+    (young) follower history covers a piece; this core is purely the age +
+    engagement ranking.
     """
     from datetime import datetime, timezone
     from database import posting_queries as _pq
 
     pubs = _pq.get_publications_with_stats(conn, content_type="artwork")
+    gallery_dates = _artwork_gallery_dates(conn, pubs)
     now = datetime.now(timezone.utc).replace(tzinfo=None)
+
+    def _naive(dt):
+        return dt.astimezone(timezone.utc).replace(tzinfo=None) if dt.tzinfo else dt
 
     by_piece: dict[str, dict] = {}
     for p in pubs:
@@ -793,18 +838,31 @@ def get_repost_candidates(conn: sqlite3.Connection, min_age_days: int = 60,
         comments = st.get("comments_count") or 0
         d = by_piece.setdefault(name, {
             "name": name, "views": 0, "faves": 0, "comments": 0,
-            "last_posted": None, "last_posted_raw": "", "platforms": {}})
+            "posted": None, "posted_raw": "", "import_dt": None, "import_raw": "",
+            "platforms": {}})
         d["views"] += views
         d["faves"] += faves
         d["comments"] += comments
-        dt, _ = _parse_posted(p.get("first_posted_at"))
-        if dt is not None:
-            if dt.tzinfo is not None:
-                dt = dt.astimezone(timezone.utc).replace(tzinfo=None)
-            if d["last_posted"] is None or dt > d["last_posted"]:
-                d["last_posted"] = dt
-                d["last_posted_raw"] = p.get("first_posted_at") or ""
+
         plat = p.get("platform") or ""
+        ext = str(p.get("external_id") or "")
+        # Real gallery upload date → the age anchor (earliest = when the art
+        # first went out). Keep the import date only as a last-resort fallback.
+        raw = gallery_dates.get((plat, ext))
+        if raw:
+            dt, _ = _parse_posted(raw)
+            if dt is not None:
+                dt = _naive(dt)
+                if d["posted"] is None or dt < d["posted"]:
+                    d["posted"] = dt
+                    d["posted_raw"] = raw
+        idt, _ = _parse_posted(p.get("first_posted_at"))
+        if idt is not None:
+            idt = _naive(idt)
+            if d["import_dt"] is None or idt < d["import_dt"]:
+                d["import_dt"] = idt
+                d["import_raw"] = p.get("first_posted_at") or ""
+
         # First non-empty url per platform wins (so a card always deep-links).
         if plat and (plat not in d["platforms"]
                      or (not d["platforms"][plat] and p.get("external_url"))):
@@ -812,9 +870,11 @@ def get_repost_candidates(conn: sqlite3.Connection, min_age_days: int = 60,
 
     out = []
     for d in by_piece.values():
-        if d["last_posted"] is None:
+        anchor = d["posted"] or d["import_dt"]
+        anchor_raw = d["posted_raw"] or d["import_raw"]
+        if anchor is None:
             continue
-        age_days = (now - d["last_posted"]).days
+        age_days = (now - anchor).days
         if age_days < min_age_days:
             continue
         # Nothing worth resurfacing if it never drew engagement (or was never
@@ -824,7 +884,7 @@ def get_repost_candidates(conn: sqlite3.Connection, min_age_days: int = 60,
         score = d["faves"] * 3 + d["views"] + d["comments"] * 5
         out.append({
             "name": d["name"],
-            "last_posted": d["last_posted_raw"],
+            "posted": anchor_raw,
             "age_days": age_days,
             "views": d["views"], "faves": d["faves"], "comments": d["comments"],
             "score": score,

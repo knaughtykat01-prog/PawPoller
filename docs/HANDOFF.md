@@ -4,11 +4,14 @@
 **Current version (master):** 2.195.0 — **Repost Radar.** Second deterministic (NO-AI — see the no-AI rule) roadmap
 item. `GET /api/analytics/repost-radar?min_age_days=60&limit=25` → `{candidates, followers, min_age_days}`:
 `analytics_queries.get_repost_candidates` pools artwork publications by piece (sums views/faves/comments, normalises
-`hits`/`reads`→views + `kudos`/`votes`→faves), gates to pieces not posted in `min_age_days`, drops zero-engagement rows,
-scores `faves*3 + views + comments*5`. Route adds title/thumb from `artwork_reader.list_artworks()` + a per-platform
-follower-growth block (honest about the young tracking window). New `#/repost-radar` page (`renderRepostRadar`) + nav
-link under **Insights & Tools**: card grid (thumb, "last shared N months ago", stats, platform deep-links) + age
-dropdown. +3 tests (`tests/test_repost_radar.py`). Pure ranking over your own numbers — no model, no external calls.
+`hits`/`reads`→views + `kudos`/`votes`→faves), gates to pieces older than `min_age_days`, drops zero-engagement rows,
+scores `faves*3 + views + comments*5`. **Age anchors on the REAL gallery upload date** (`_artwork_gallery_dates` reads
+the submission tables' `posted_at`/`create_datetime`) — NOT `publications.first_posted_at`, which is the PawPoller
+*import* date for back-catalogue art (all ~July 2026) and made the radar return 0 on prod; import date is the fallback.
+Route adds title/thumb from `artwork_reader.list_artworks()` + a per-platform follower-growth block (honest about the
+young tracking window). New `#/repost-radar` page (`renderRepostRadar`) + nav link under **Insights & Tools**: card grid
+(thumb, "posted ~N ago", stats, platform deep-links) + age dropdown. +4 tests (`tests/test_repost_radar.py`). Pure
+ranking over your own numbers — no model, no external calls.
 
 **Prior — 2.194.0 — Wrong-link auditor + auto-backups on.** First of the deterministic roadmap.
 `GET /api/masterpieces/mislink-audit`: dHash each Masterpiece's local images, compare each member's stored hash, flag
