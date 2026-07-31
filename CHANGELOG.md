@@ -12,6 +12,33 @@ popup, which is usually the wrong thing to show — so write the blockquote.
 
 ---
 
+## [2.195.0] - 2026-07-31 - Repost Radar: resurface your best old artwork
+
+> **A new page that tells you which old art is worth posting again.** "Repost Radar" (in Insights & Tools) looks at
+> everything you've shared before, ranks it by the views, faves and comments it actually earned, and shows the pieces
+> you haven't posted in a while — so a strong old drawing doesn't just vanish down the feed. Each one has a thumbnail,
+> when you last shared it, and a link back to the original post. It's all your own numbers — no AI, nothing sent
+> anywhere. Change the "not shared in N+ days" filter to widen or narrow the list.
+
+Second deterministic (no-AI) roadmap item after the mislink auditor. Pure ranking over your own publication dates and
+the poll stats already collected — no model, no external calls.
+
+- **`GET /api/analytics/repost-radar?min_age_days=60&limit=25`** (`routes/api.py`) → `{candidates, followers, min_age_days}`.
+  Enriches each candidate with title + thumbnail from `artwork_reader.list_artworks()` (one pass, no per-piece IO) and a
+  `#/artwork/image/{name}` detail route. The `followers` block reports current following per platform plus growth over
+  whatever snapshot history exists — honest about the young tracking window, fills in over time.
+- **`analytics_queries.get_repost_candidates(conn, min_age_days=60, limit=25)`** — pools `get_publications_with_stats(
+  content_type="artwork")` by piece: sums views/faves/comments (normalising `hits`/`reads` → views, `kudos`/`votes` →
+  faves), takes the newest `first_posted_at` as "last shared", and keeps one deep-link per platform. Gates to
+  `age_days >= min_age_days`, drops zero-engagement/never-polled pieces, scores `faves*3 + views + comments*5`, sorts desc.
+- **Frontend:** new `#/repost-radar` page + nav link under **Insights & Tools** (`renderRepostRadar` in `app.js`,
+  `API.getRepostRadar`). Card grid (thumb, title, "last shared N months ago", stats, platform chips that deep-link to the
+  original post) + a following-now strip. An age dropdown (30/60/90/180/365) re-fetches. Empty state nudges you to lower
+  the filter.
+
+**Tests:** `tests/test_repost_radar.py` — gates out too-new and zero-engagement pieces, pools stats + links across two
+platforms, verifies the score, and confirms lowering the age filter reveals newer pieces.
+
 ## [2.194.0] - 2026-07-31 - Wrong-link auditor for Masterpieces (+ auto-backups on)
 
 > **Find site-links pointing at the wrong upload.** On "Tidy up Masterpieces" there's a new **Wrong links** scan: it

@@ -1977,6 +1977,7 @@ editor, settings, testing.
 | GET | `/api/analytics/top-fans` | Cross-platform fan leaderboard. |
 | GET | `/api/analytics/trending` | Submissions with unusual growth (spike detection). |
 | GET | `/api/analytics/historical` | Historical analytics rollup. |
+| GET | `/api/analytics/repost-radar` | Repost Radar (2.195): older, well-performing artwork worth resurfacing. `analytics_queries.get_repost_candidates` pools artwork publications by piece, gates to `min_age_days`, scores `faves*3+views+comments*5`; route adds title/thumb + a follower-growth block. Deterministic — no model. |
 | GET | `/api/groups` / POST / GET `/{id}` / PUT / DELETE | Submission groups CRUD. |
 | GET | `/api/groups/{id}/stats` | Per-group submission stats. |
 | POST | `/api/groups/{id}/members` / DELETE `/{gid}/members/{mid}` | Group membership. |

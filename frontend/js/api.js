@@ -776,6 +776,9 @@ const API = {
      * Best periods, fastest growing, weekly growth reports.
      */
     getHistoricalAnalytics(params) { return this.get('/api/analytics/historical', params); },
+    /* Repost Radar: older, well-performing artwork worth resurfacing (deterministic,
+     * ranked by pooled engagement + age; no model). params: {min_age_days, limit}. */
+    getRepostRadar(params) { return this.get('/api/analytics/repost-radar', params); },
     /* ── Dashboard Auth methods ─────────────────────────────────
      * Self-hosted session auth: login, logout, setup, password change,
      * TOTP 2FA, API keys, and Cloudflare Turnstile config.

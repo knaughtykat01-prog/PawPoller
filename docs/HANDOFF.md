@@ -1,15 +1,23 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-07-31
-**Current version (master):** 2.194.0 — **Wrong-link auditor + auto-backups on.** First of the deterministic (NO-AI —
-see the no-AI rule) roadmap. `GET /api/masterpieces/mislink-audit`: dHash each Masterpiece's local images, compare each
-member's stored hash, flag mismatches past `HAMMING_THRESHOLD` (unjudgeable/no-hash skipped). Third "Wrong links"
-section on `#/masterpieces/duplicates` (scan button → flagged rows → Unlink via `removeMasterpieceMember`). +2 tests
-(patterned fixtures — solid colours dHash to zero). **Auto-backups enabled on the VM**: daily, keep=3 (~200MB/zip; 3
-not 7 because the volume is 85% full); local `/app/data/auto-backups` guards app-logic loss, not disk failure.
-**Roadmap (all deterministic, no LLM):** ✅ auto-backups, ✅ mislink auditor · next: repost radar · weekly digest ·
-tag-performance analytics · Telegram-channel posting · Reddit (own project). Fixed a version drift: `consts.ts` was
-stuck at 2.191.1 while `config.py` was 2.193.4 — both now 2.194.0.
+**Current version (master):** 2.195.0 — **Repost Radar.** Second deterministic (NO-AI — see the no-AI rule) roadmap
+item. `GET /api/analytics/repost-radar?min_age_days=60&limit=25` → `{candidates, followers, min_age_days}`:
+`analytics_queries.get_repost_candidates` pools artwork publications by piece (sums views/faves/comments, normalises
+`hits`/`reads`→views + `kudos`/`votes`→faves), gates to pieces not posted in `min_age_days`, drops zero-engagement rows,
+scores `faves*3 + views + comments*5`. Route adds title/thumb from `artwork_reader.list_artworks()` + a per-platform
+follower-growth block (honest about the young tracking window). New `#/repost-radar` page (`renderRepostRadar`) + nav
+link under **Insights & Tools**: card grid (thumb, "last shared N months ago", stats, platform deep-links) + age
+dropdown. +3 tests (`tests/test_repost_radar.py`). Pure ranking over your own numbers — no model, no external calls.
+
+**Prior — 2.194.0 — Wrong-link auditor + auto-backups on.** First of the deterministic roadmap.
+`GET /api/masterpieces/mislink-audit`: dHash each Masterpiece's local images, compare each member's stored hash, flag
+mismatches past `HAMMING_THRESHOLD` (unjudgeable/no-hash skipped). Third "Wrong links" section on
+`#/masterpieces/duplicates` (scan button → flagged rows → Unlink via `removeMasterpieceMember`). +2 tests (patterned
+fixtures — solid colours dHash to zero). **Auto-backups enabled on the VM**: daily, keep=3 (~200MB/zip; 3 not 7 because
+the volume is 85% full); local `/app/data/auto-backups` guards app-logic loss, not disk failure. **Roadmap (all
+deterministic, no LLM):** ✅ auto-backups, ✅ mislink auditor, ✅ repost radar · next: weekly digest · tag-performance
+analytics · Telegram-channel posting · Reddit (own project).
 
 **Prior — 2.193.4 — Request URLs are no longer logged at all.** THE fix, after two that didn't
 work. `httpx`/`httpcore`/`httpx._client` raised to `WARNING` so the leaking record is never created (httpx logs the full

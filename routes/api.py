@@ -2505,6 +2505,71 @@ def get_analytics_insights(tz_offset: int = 0):
         conn.close()
 
 
+@router.get("/analytics/repost-radar")
+def get_repost_radar(min_age_days: int = 60, limit: int = 25):
+    """Older, well-performing artwork worth resurfacing to your feed (gap-wave-6).
+
+    Fully deterministic — no model, no AI: it ranks YOUR OWN past artwork by the
+    pooled view/fave/comment counts the pollers already collected, gated to pieces
+    you haven't posted anywhere in ``min_age_days``. Each candidate carries a
+    thumbnail, a "last shared N days ago", and the platform links to revisit the
+    original post. A follower-context block rides alongside so you can see how much
+    your following has grown since — where the (still-young) follower history
+    covers the window; it fills in over time.
+    """
+    from database import analytics_queries, followers
+    from posting import artwork_reader
+    from urllib.parse import quote
+
+    min_age_days = min(3650, max(7, int(min_age_days)))
+    limit = min(100, max(1, int(limit)))
+    conn = get_connection()
+    try:
+        cands = analytics_queries.get_repost_candidates(
+            conn, min_age_days=min_age_days, limit=limit)
+
+        # Title + thumbnail from the artwork library — one pass, no per-piece IO.
+        art = {a["name"]: a for a in artwork_reader.list_artworks()}
+        for c in cands:
+            a = art.get(c["name"], {})
+            c["title"] = a.get("title") or c["name"].replace("_", " ")
+            img = a.get("image", "")
+            c["thumb_url"] = (f"/api/artwork/image?name={quote(c['name'])}"
+                              f"&file={quote(img)}") if img else ""
+            c["detail_route"] = f"#/artwork/image/{quote(c['name'])}"
+
+        # Honest follower-context block: current following + growth over whatever
+        # snapshot history exists (tracking is young — this fills in over time).
+        foll = []
+        try:
+            plat_rows = conn.execute(
+                "SELECT DISTINCT platform FROM accounts "
+                "WHERE follower_count IS NOT NULL AND follower_count > 0"
+            ).fetchall()
+        except Exception:
+            plat_rows = []
+        for r in plat_rows:
+            plat = r["platform"]
+            latest = followers.platform_latest(conn, plat) or {}
+            series = followers.platform_series(conn, plat)
+            delta = days = None
+            if len(series) >= 2:
+                first, last = series[0], series[-1]
+                delta = (last.get("followers") or 0) - (first.get("followers") or 0)
+                d0, _ = analytics_queries._parse_posted(first.get("polled_at"))
+                d1, _ = analytics_queries._parse_posted(last.get("polled_at"))
+                if d0 and d1:
+                    days = (d1 - d0).days
+            foll.append({"platform": plat, "followers": latest.get("followers"),
+                         "delta": delta, "days": days})
+        foll.sort(key=lambda x: -(x["followers"] or 0))
+
+        return {"candidates": cands, "followers": foll,
+                "min_age_days": min_age_days}
+    finally:
+        conn.close()
+
+
 @router.get("/analytics/historical")
 def get_historical_analytics(weeks: int = Query(12)):
     """Return historical analytics: best periods, fastest growing, weekly growth."""

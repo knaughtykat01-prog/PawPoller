@@ -763,3 +763,73 @@ def get_posting_insights(conn: sqlite3.Connection, tz_offset_minutes: int = 0) -
 
     return {"platforms": per_platform, "overperformers": overperformers[:10],
             "weekday": _buckets(weekday), "hour": _buckets(hour)}
+
+
+def get_repost_candidates(conn: sqlite3.Connection, min_age_days: int = 60,
+                          limit: int = 25) -> list[dict]:
+    """Older, well-performing ARTWORK worth resurfacing to your feed.
+
+    Pools each piece's artwork publications across every platform, ranks by
+    pooled engagement, and gates to pieces you haven't posted in ``min_age_days``.
+    Fully deterministic — no model involved: it reads your own publication dates
+    plus the view/fave/comment counts the pollers already collected. The route
+    layers on follower-growth-since-post context where the (young) follower
+    history covers a piece; this core is purely the age + engagement ranking.
+    """
+    from datetime import datetime, timezone
+    from database import posting_queries as _pq
+
+    pubs = _pq.get_publications_with_stats(conn, content_type="artwork")
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+
+    by_piece: dict[str, dict] = {}
+    for p in pubs:
+        name = p.get("story_name")
+        if not name:
+            continue
+        st = p.get("stats") or {}
+        views = st.get("views") or st.get("hits") or st.get("reads") or 0
+        faves = st.get("favorites_count") or st.get("kudos") or st.get("votes") or 0
+        comments = st.get("comments_count") or 0
+        d = by_piece.setdefault(name, {
+            "name": name, "views": 0, "faves": 0, "comments": 0,
+            "last_posted": None, "last_posted_raw": "", "platforms": {}})
+        d["views"] += views
+        d["faves"] += faves
+        d["comments"] += comments
+        dt, _ = _parse_posted(p.get("first_posted_at"))
+        if dt is not None:
+            if dt.tzinfo is not None:
+                dt = dt.astimezone(timezone.utc).replace(tzinfo=None)
+            if d["last_posted"] is None or dt > d["last_posted"]:
+                d["last_posted"] = dt
+                d["last_posted_raw"] = p.get("first_posted_at") or ""
+        plat = p.get("platform") or ""
+        # First non-empty url per platform wins (so a card always deep-links).
+        if plat and (plat not in d["platforms"]
+                     or (not d["platforms"][plat] and p.get("external_url"))):
+            d["platforms"][plat] = p.get("external_url") or ""
+
+    out = []
+    for d in by_piece.values():
+        if d["last_posted"] is None:
+            continue
+        age_days = (now - d["last_posted"]).days
+        if age_days < min_age_days:
+            continue
+        # Nothing worth resurfacing if it never drew engagement (or was never
+        # polled) — don't pad the radar with dead rows.
+        if (d["views"] + d["faves"] + d["comments"]) <= 0:
+            continue
+        score = d["faves"] * 3 + d["views"] + d["comments"] * 5
+        out.append({
+            "name": d["name"],
+            "last_posted": d["last_posted_raw"],
+            "age_days": age_days,
+            "views": d["views"], "faves": d["faves"], "comments": d["comments"],
+            "score": score,
+            "platforms": [{"platform": k, "url": v}
+                          for k, v in sorted(d["platforms"].items())],
+        })
+    out.sort(key=lambda x: (-x["score"], -x["age_days"]))
+    return out[:limit]

@@ -1138,6 +1138,8 @@ const App = {
             window.Inbox.render();
         } else if (parts[0] === 'analytics') {
             this.renderAnalytics();
+        } else if (parts[0] === 'repost-radar') {
+            this.renderRepostRadar();
         } else if (parts[0] === 'accounts') {
             if (window.Accounts) window.Accounts.render();
         } else if (parts[0] === 'persona' && parts[1]) {
@@ -15336,6 +15338,116 @@ const App = {
                     <div><h4 style="margin:.2rem 0">By hour posted</h4>${hourBars}</div>
                 </div>
             </div>`;
+    },
+
+    /* Repost Radar (gap-wave-6) — older, well-performing artwork worth resurfacing.
+     * Deterministic: the server ranks YOUR past art by pooled engagement, gated to
+     * pieces you haven't posted in _repostRadarAge days. No model, no AI. */
+    _repostRadarAge: 60,
+
+    _repostAgeLabel(days) {
+        if (days == null) return '';
+        if (days >= 730) return `${Math.floor(days / 365)} years ago`;
+        if (days >= 365) return 'about a year ago';
+        if (days >= 60) return `${Math.round(days / 30)} months ago`;
+        if (days >= 14) return `${Math.round(days / 7)} weeks ago`;
+        return `${days} days ago`;
+    },
+
+    async renderRepostRadar() {
+        this._loading();
+        const age = this._repostRadarAge;
+        let res;
+        try {
+            res = await API.getRepostRadar({ min_age_days: age, limit: 40 });
+        } catch (e) {
+            this._setContent('<div class="empty-state"><h3>Repost Radar</h3>'
+                + '<p>Could not load candidates. Try again shortly.</p></div>');
+            return;
+        }
+        const cands = (res && res.candidates) || [];
+        const foll = (res && res.followers) || [];
+
+        const ageOpts = [30, 60, 90, 180, 365].map(d =>
+            `<option value="${d}"${d === age ? ' selected' : ''}>Not shared in ${d}+ days</option>`
+        ).join('');
+
+        const follStrip = foll.length ? `
+            <div class="chart-container" style="margin-bottom:16px">
+                <h3 style="margin:0 0 .2rem">Your following now
+                    <span class="muted" style="font-size:.7em">growth since tracking began — fills in over time</span></h3>
+                <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:.5rem">
+                    ${foll.map(f => {
+                        const label = this._platformLabels[f.platform] || (f.platform || '').toUpperCase();
+                        const now = f.followers != null ? Utils.formatNumber(f.followers) : '--';
+                        let delta = '';
+                        if (f.delta != null && f.days != null) {
+                            const sign = f.delta > 0 ? '+' : '';
+                            delta = ` <span style="color:${f.delta > 0 ? 'var(--success,#4caf50)' : 'var(--text-muted)'}">`
+                                + `${sign}${Utils.formatNumber(f.delta)} · ${f.days}d</span>`;
+                        }
+                        return `<span class="chip" style="padding:.35em .7em">
+                            <strong>${Utils.escapeHtml(label)}</strong> ${now}${delta}</span>`;
+                    }).join('')}
+                </div>
+            </div>` : '';
+
+        const cardsHtml = cands.length ? cands.map(c => {
+            const thumb = c.thumb_url
+                ? `<img src="${c.thumb_url}" alt="" loading="lazy"
+                     style="width:100%;height:170px;object-fit:cover;display:block">`
+                : `<div style="height:170px;display:flex;align-items:center;justify-content:center;
+                     background:var(--bg-glass);color:var(--text-muted);font-size:2rem">&#127912;</div>`;
+            const chips = (c.platforms || []).map(p => {
+                const label = this._platformLabels[p.platform] || (p.platform || '').toUpperCase();
+                return p.url
+                    ? `<a class="chip" href="${Utils.escapeHtml(p.url)}" target="_blank" rel="noopener"
+                         style="padding:.25em .6em;text-decoration:none">${Utils.escapeHtml(label)} &#8599;</a>`
+                    : `<span class="chip" style="padding:.25em .6em">${Utils.escapeHtml(label)}</span>`;
+            }).join('');
+            return `
+                <div class="submission-card" style="cursor:default">
+                    <a href="${c.detail_route}" style="text-decoration:none;color:inherit;display:block">${thumb}</a>
+                    <div style="padding:12px">
+                        <a href="${c.detail_route}" style="text-decoration:none;color:inherit">
+                            <div style="font-weight:600;line-height:1.3;margin-bottom:2px">${Utils.escapeHtml(c.title || c.name)}</div>
+                        </a>
+                        <div class="muted" style="font-size:12px;margin-bottom:8px">last shared ${this._repostAgeLabel(c.age_days)}</div>
+                        <div style="display:flex;gap:12px;font-size:13px;margin-bottom:10px">
+                            <span title="views">&#128065; ${Utils.formatNumber(c.views)}</span>
+                            <span title="faves">&#10084;&#65039; ${Utils.formatNumber(c.faves)}</span>
+                            <span title="comments">&#128172; ${Utils.formatNumber(c.comments)}</span>
+                        </div>
+                        <div style="display:flex;flex-wrap:wrap;gap:6px">${chips}</div>
+                    </div>
+                </div>`;
+        }).join('') : `<div class="empty-state" style="grid-column:1/-1">
+                <h3>Nothing to resurface yet</h3>
+                <p>No artwork is older than ${age} days with engagement to show. Lower the age filter,
+                   or check back once your older pieces have had time to gather views.</p>
+            </div>`;
+
+        this._setContent(`
+            <div class="page-header">
+                <h2>&#128260; Repost Radar</h2>
+                <div class="field" style="margin-left:auto;margin-bottom:0">
+                    <select id="repost-age-select" style="width:auto">${ageOpts}</select>
+                </div>
+            </div>
+            <p class="muted" style="margin:-.4rem 0 1rem;max-width:70ch">
+                Your best old artwork, ranked by the views, faves and comments it actually earned —
+                surfaced so you can share it again to your feed. Purely your own numbers and post dates;
+                no AI involved.
+            </p>
+            ${follStrip}
+            <div class="submission-card-grid">${cardsHtml}</div>
+        `);
+
+        const sel = document.getElementById('repost-age-select');
+        if (sel) sel.addEventListener('change', () => {
+            this._repostRadarAge = parseInt(sel.value, 10) || 60;
+            this.renderRepostRadar();
+        });
     },
 
     async renderAnalytics() {
