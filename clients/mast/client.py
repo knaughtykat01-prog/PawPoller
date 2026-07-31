@@ -63,6 +63,31 @@ def _strip_html(body: str) -> str:
     return html.unescape(text).strip()
 
 
+_COMPAT_RE = re.compile(r"\(compatible;\s*([A-Za-z][A-Za-z0-9._+-]*)", re.IGNORECASE)
+
+
+def detect_flavour(version: str = "", title: str = "", source_url: str = "") -> str:
+    """Name the fediverse server software from its public `/api/v1/instance`.
+
+    Every Mastodon-API-compatible server (Pleroma, Akkoma, Pixelfed, …) reports
+    a version string like ``2.7.2 (compatible; Pleroma 2.10.2)`` — the Mastodon
+    API version it emulates, then its own name in the ``(compatible; NAME …)``
+    tail. We read that tail. GoToSocial doesn't use the tail, so we fall back to
+    its ``source_url``/title; a plain semver with no marker is Mastodon itself.
+    Pure string parsing — no model (the NO-AI rule). Returns e.g. "Pleroma",
+    "Akkoma", "Pixelfed", "GoToSocial", or "Mastodon"."""
+    m = _COMPAT_RE.search(version or "")
+    if m:
+        return m.group(1)
+    src = (source_url or "").lower()
+    blob = f"{src} {(title or '').lower()}"
+    if "gotosocial" in blob:
+        return "GoToSocial"
+    if "pixelfed" in blob:
+        return "Pixelfed"
+    return "Mastodon"
+
+
 def _normalise_instance(url: str) -> str:
     """Normalise an instance URL to ``https://host`` (no trailing slash/path)."""
     url = (url or "").strip()
@@ -162,6 +187,20 @@ class MastClient:
         if self._logged_in and self._account_id:
             return True
         return bool(await self.validate_session())
+
+    async def get_instance_info(self) -> dict:
+        """Public instance metadata + detected server flavour (see
+        ``detect_flavour``). Returns ``{"software": str, "version": str}``;
+        empty software if the instance couldn't be read."""
+        data = await self._get_json("/api/v1/instance")
+        if not isinstance(data, dict):
+            return {"software": "", "version": ""}
+        version = str(data.get("version", "") or "")
+        return {
+            "software": detect_flavour(version, str(data.get("title", "") or ""),
+                                       str(data.get("source_url", "") or "")),
+            "version": version,
+        }
 
     # -- HTTP Helpers ---------------------------------------------------------
 

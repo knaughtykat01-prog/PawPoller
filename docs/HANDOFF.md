@@ -1,7 +1,18 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-07-31
-**Current version (master):** 2.201.0 — **Furbooru = the 19th platform (poll-only).** Second of the platform expansion
+**Current version (master):** 2.202.0 — **Fediverse = Mastodon connector now covers Pleroma/Akkoma/GoToSocial/Pixelfed/
+Firefish.** Third expansion item, resolved by **verify-not-duplicate** (the user's call). All those servers implement the
+**Mastodon client API**; the `mast` client is already instance-agnostic (base URL + token, standard `/api/v1/*`,
+`follow_redirects`). Confirmed live by probing `/api/v1/instance` on each flavour. Rather than 4 duplicate stacks, added
+**flavour detection**: `clients/mast/client.py::detect_flavour()` reads the `(compatible; NAME)` tail Pleroma/Akkoma/
+Pixelfed emit (GoToSocial via `source_url`/title; else Mastodon) — **pure string parse, NO model**; `get_instance_info()`
+GETs `/api/v1/instance`. `routes/mast_api.py` detects+saves `mast_instance_flavour` on connect, returns it in `/auth/
+status`, clears on disconnect. Frontend shows it ("Mastodon / Pleroma") + a connect-form hint that any Mastodon-compatible
+server works. +7 tests. **NO new platform codes** — same Mastodon box. **Expansion roadmap next:** Aryion → Piczel/Picarto
+→ SubscribeStar; Reddit own track.
+
+**Prior — 2.201.0 — Furbooru = the 19th platform (poll-only).** Second of the platform expansion
 (`docs/specs/platform_expansion_v2.md`), first of the **booru** family. Code `fbr`. Furbooru runs **Philomena** (same
 engine as Derpibooru); its read JSON API is **public**, so `clients/fbr/client.py` (`FurbooruClient(username, api_key,
 base_url)`) is written against `base_url` and **reusable for the whole Philomena family**. **SCORE model** (upvotes −

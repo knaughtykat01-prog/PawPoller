@@ -11841,14 +11841,14 @@ const App = {
                 </details>
 
                 <details class="settings-accordion">
-                    <summary><span class="status-dot ${mastAuth.has_credentials ? 'connected' : 'disconnected'}"></span>Mastodon${mastAuth.has_credentials ? ` <span class="summary-meta">— ${Utils.escapeHtml(mastAuth.username || '')}</span>` : ''}</summary>
+                    <summary><span class="status-dot ${mastAuth.has_credentials ? 'connected' : 'disconnected'}"></span>Mastodon${mastAuth.flavour && mastAuth.flavour !== 'Mastodon' ? ' <span class="summary-meta" style="color:var(--text-muted)">/ ' + Utils.escapeHtml(mastAuth.flavour) + '</span>' : ''}${mastAuth.has_credentials ? ` <span class="summary-meta">— ${Utils.escapeHtml(mastAuth.username || '')}</span>` : ''}</summary>
                     <div class="accordion-body">
                     ${mastAuth.has_credentials ? `
                     <div class="settings-row">
                         <div>
                             <span class="settings-label">Status</span>
                         </div>
-                        <span class="telegram-status connected">Connected — tracking ${Utils.escapeHtml(mastAuth.username || '')}</span>
+                        <span class="telegram-status connected">Connected — tracking ${Utils.escapeHtml(mastAuth.username || '')}${mastAuth.flavour ? ' (' + Utils.escapeHtml(mastAuth.flavour) + ')' : ''}</span>
                     </div>
                     <div class="settings-row" style="margin-top:8px">
                         <div>
@@ -11868,6 +11868,7 @@ const App = {
                     </div>
                     ` : `
                     <p style="color:var(--text-muted);font-size:13px;margin-bottom:12px">Connect to Mastodon with your instance URL and a personal access token. On your instance go to Settings &gt; Development &gt; New application, give it the <code>read</code> scope, and copy "Your access token".</p>
+                    <p style="color:var(--text-muted);font-size:12px;margin-bottom:12px;padding:8px 10px;background:var(--bg-subtle,rgba(127,127,127,.08));border-radius:6px">Works with any <strong>Mastodon-compatible fediverse server</strong> — Pleroma, Akkoma, GoToSocial, Firefish, Pixelfed and more all speak the same API. Just enter that server's URL and a read token; PawPoller detects which software it is automatically.</p>
                     <div style="display:flex;flex-direction:column;gap:8px;max-width:400px">
                         <input type="text" id="mast-instance-url" class="search-input" placeholder="Instance URL (e.g. https://mastodon.social)">
                         <input type="password" id="mast-access-token" class="search-input" placeholder="Access token">

@@ -12,6 +12,34 @@ popup, which is usually the wrong thing to show — so write the blockquote.
 
 ---
 
+## [2.202.0] - 2026-07-31 - Fediverse: your Mastodon connection now works with Pleroma, Akkoma, GoToSocial, Pixelfed & more
+
+> **The Mastodon platform now officially covers the whole fediverse.** Pleroma, Akkoma, GoToSocial, Firefish and Pixelfed
+> all speak the same API as Mastodon, so PawPoller already tracks (and posts to) them — just enter that server's URL and a
+> read token in the Mastodon connect box. When you connect, PawPoller now detects which software the server runs and shows
+> it next to the connection (e.g. "Mastodon / Pleroma"). No new platform to set up — it's the same Mastodon box.
+
+Second item of the platform-expansion "fediverse batch" — resolved by **verification, not duplication**. Every server in
+the batch (Pleroma/Akkoma/GoToSocial/Pixelfed/Firefish) implements the **Mastodon client API**, and the existing `mast`
+client is already instance-agnostic (base URL + token, standard `/api/v1/*` endpoints, `follow_redirects`). Confirmed live
+by probing `/api/v1/instance` on each flavour (2026-07-31): Mastodon `4.7`, Pixelfed `3.5.3 (compatible; Pixelfed 0.12.7)`,
+GoToSocial `0.22.1`, Akkoma `2.7.2 (compatible; Akkoma 3.19)`, Pleroma `2.7.2 (compatible; Pleroma 2.10.2)` — all serve the
+Mastodon API. So rather than ship four near-duplicate platform stacks, this release adds **flavour detection + a hint**.
+
+- **`clients/mast/client.py`** — new `detect_flavour(version, title, source_url)`: reads the `(compatible; NAME …)` tail
+  that Pleroma/Akkoma/Pixelfed put in their Mastodon-API version string (falls back to `source_url`/title for GoToSocial,
+  else "Mastodon"). Pure string parsing — **no model** (the NO-AI rule). New `get_instance_info()` GETs `/api/v1/instance`
+  and returns `{software, version}`.
+- **`routes/mast_api.py`** — `/auth/connect` detects the flavour on connect (best-effort, never blocks a valid connect)
+  and saves `mast_instance_flavour`; `/auth/status` returns it; `/auth/disconnect` clears it. Connect message appends the
+  flavour when it isn't plain Mastodon.
+- **Frontend** — the Mastodon Settings accordion shows the detected flavour in the summary ("Mastodon / Pleroma") and the
+  connected status line, and the connect form gained a hint that any Mastodon-compatible fediverse server works.
+
+**Tests:** `tests/test_mast_parse.py` — 7 `detect_flavour` cases built from the real version strings observed live.
+
+---
+
 ## [2.201.0] - 2026-07-31 - Furbooru — the 19th platform (poll-only)
 
 > **Furbooru is now tracked.** Connect it in Settings → Platforms with just your Furbooru username — that's all that's

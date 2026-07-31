@@ -49,6 +49,7 @@ def mast_auth_status():
         "has_credentials": has_credentials,
         "has_data": has_data,
         "username": settings.get("mast_instance_url", ""),
+        "flavour": settings.get("mast_instance_flavour", ""),
     }
 
 
@@ -86,19 +87,32 @@ async def mast_connect(body: dict):
     if not handle:
         raise HTTPException(401, "Login failed — check the instance URL and access token. The token needs at least the 'read' scope.")
 
+    # Detect the server software (Mastodon / Pleroma / Akkoma / GoToSocial /
+    # Pixelfed / …) so the UI can label the connection. Best-effort — a failure
+    # here must not block an otherwise-valid connect.
+    flavour = ""
+    try:
+        flavour = (await client.get_instance_info()).get("software", "")
+    except Exception:
+        pass
+
     config.save_settings({
         "mast_instance_url": client.instance_url,
         "mast_access_token": access_token,
         "mast_notifications_enabled": True,
+        "mast_instance_flavour": flavour,
     })
 
-    return {"status": "success", "message": f"Connected — tracking {handle}"}
+    msg = f"Connected — tracking {handle}"
+    if flavour and flavour != "Mastodon":
+        msg += f" · {flavour}"
+    return {"status": "success", "message": msg}
 
 
 @mast_router.post("/auth/disconnect")
 def mast_disconnect():
     """Clear Mastodon credentials from settings."""
-    config.delete_settings_keys(["mast_instance_url", "mast_access_token"])
+    config.delete_settings_keys(["mast_instance_url", "mast_access_token", "mast_instance_flavour"])
     config.save_settings({"mast_notifications_enabled": False})
     return {"status": "success", "message": "Mastodon disconnected"}
 

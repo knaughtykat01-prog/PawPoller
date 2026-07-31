@@ -8,10 +8,29 @@ the "keep a boost only when the account is @-tagged" rule.
 
 import asyncio
 
+import pytest
+
 from clients.mast.client import (
     MastClient, _strip_html, _normalise_instance,
-    _status_mentions_account, _safe_int,
+    _status_mentions_account, _safe_int, detect_flavour,
 )
+
+
+@pytest.mark.parametrize("version,title,source_url,expected", [
+    # Real `/api/v1/instance` version strings observed live (2026-07-31).
+    ("4.7.0-alpha.2+pr-39999-68e5caf", "Mastodon", "", "Mastodon"),
+    ("2.7.2 (compatible; Pleroma 2.10.2)", "", "", "Pleroma"),
+    ("2.7.2 (compatible; Akkoma 3.19.0-0-g4ceb81a--stable-)", "", "", "Akkoma"),
+    ("3.5.3 (compatible; Pixelfed 0.12.7)", "pixelfed", "", "Pixelfed"),
+    # GoToSocial doesn't use the compatible tail — fall back to source/title.
+    ("0.22.1+git-fdff42b", "SuperSeriousBusiness GoToSocial",
+     "https://github.com/superseriousbusiness/gotosocial", "GoToSocial"),
+    ("0.22.1", "", "https://github.com/superseriousbusiness/gotosocial", "GoToSocial"),
+    # Unknown / bare semver → assume Mastodon (the connector still works).
+    ("", "", "", "Mastodon"),
+])
+def test_detect_flavour(version, title, source_url, expected):
+    assert detect_flavour(version, title, source_url) == expected
 
 
 def _status(**over):
