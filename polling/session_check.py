@@ -33,13 +33,13 @@ _session_health: dict[str, dict] = {}
 _lock = asyncio.Lock()
 
 # Platforms with a real validate_session() network check. Order = check order.
-CHECKABLE: tuple[str, ...] = ("ao3", "sf", "sqw", "bsky", "mast", "tum", "pix", "thr", "ig", "e621")
+CHECKABLE: tuple[str, ...] = ("ao3", "sf", "sqw", "bsky", "mast", "tum", "pix", "thr", "ig", "e621", "fn")
 
 # Human labels for log/UI fallback (the frontend has its own map too).
 LABELS = {
     "ao3": "AO3", "sf": "SoFurry", "sqw": "SquidgeWorld", "bsky": "Bluesky",
     "mast": "Mastodon", "tum": "Tumblr", "pix": "Pixiv", "thr": "Threads",
-    "ig": "Instagram", "e621": "e621",
+    "ig": "Instagram", "e621": "e621", "fn": "FurryNetwork",
 }
 
 
@@ -66,6 +66,8 @@ def _configured(code: str, s: dict) -> bool:
         return bool(s.get("ig_access_token"))
     if code == "e621":
         return bool(s.get("e621_username") and s.get("e621_api_key"))
+    if code == "fn":
+        return bool(s.get("fn_username") and (s.get("fn_password") or s.get("fn_refresh_token")))
     return False
 
 
@@ -108,6 +110,12 @@ async def _validate(code: str, s: dict):
     elif code == "e621":
         from polling.e621_poller import _get_or_create_client
         c = _get_or_create_client(s, s.get("e621_username", ""), s.get("e621_api_key", ""))
+    elif code == "fn":
+        from polling.fn_poller import _get_or_create_client
+        c = _get_or_create_client({
+            "fn_username": s.get("fn_username", ""), "fn_password": s.get("fn_password", ""),
+            "fn_refresh_token": s.get("fn_refresh_token", ""),
+            "fn_access_token": s.get("fn_access_token", "")})
     else:
         raise ValueError(f"unknown platform {code}")
     return await c.validate_session()
