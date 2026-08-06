@@ -28,6 +28,8 @@ import json
 import logging
 import sqlite3
 
+from database import platform_metrics
+
 logger = logging.getLogger(__name__)
 
 # All platform codes PawPoller knows about. Order is the display order.
@@ -178,39 +180,43 @@ def seed_default_accounts(conn: sqlite3.Connection, settings: dict) -> int:
     return created
 
 
-# Per-platform submissions table for account stat rollups. Only platforms whose
-# analytics tables carry account_id can be segregated; others return None.
-_STATS_TABLE = {
-    "ib": "submissions", "fa": "fa_submissions", "ws": "ws_submissions",
-    "da": "da_submissions", "wp": "wp_submissions", "ik": "ik_submissions",
-    "bsky": "bsky_submissions", "tw": "tw_submissions", "sf": "sf_submissions",
-    "sqw": "sqw_submissions", "ao3": "ao3_submissions", "mast": "mast_submissions",
-    "tum": "tum_submissions", "pix": "pix_submissions", "thr": "thr_submissions",
-    "ig": "ig_submissions", "e621": "e621_submissions",
-}
-
-
 def account_stats(conn: sqlite3.Connection, account_id: int, platform: str) -> dict | None:
-    """Return {submissions, views, favorites, comments} for one account.
+    """Return {submissions, views, favorites, comments, score} for one account.
 
-    None if the platform's submissions table isn't account-aware yet (the other
-    9 platforms until they're rolled out). Used to show per-account stats on the
-    Accounts page so two accounts' numbers appear side by side.
+    None if the platform is unknown, or its submissions table isn't
+    account-aware yet. Used to show per-account stats on the Accounts page so
+    two accounts' numbers appear side by side, and pooled per identity by
+    :func:`personas.persona_stats`.
+
+    Metric columns come from the registry (database/platform_metrics.py). This
+    used to sniff for `views`/`favorites_count`/`comments_count` and write 0
+    for anything else, so every account on Twitter, e621, Itaku, Bluesky,
+    Mastodon or Tumblr reported zero favourites — their columns are called
+    likes/notes/score — and the "By persona" widget under-counted to match.
     """
-    table = _STATS_TABLE.get(platform)
-    if not table:
+    spec = platform_metrics.get(platform)
+    if not spec:
         return None
-    cols = {r[1] for r in conn.execute(f"PRAGMA table_info({table})").fetchall()}
+    cols = {r[1] for r in conn.execute(f"PRAGMA table_info({spec.table})").fetchall()}
     if "account_id" not in cols:
         return None
-    # Sum whichever of the standard metric columns this platform's table has
-    # (e.g. Wattpad/Bluesky use reads/likes instead of views/favorites_count).
-    parts = ["COUNT(*) AS submissions"]
-    for col, alias in (("views", "views"), ("favorites_count", "favorites"),
-                       ("comments_count", "comments")):
-        parts.append(f"COALESCE(SUM({col}), 0) AS {alias}" if col in cols else f"0 AS {alias}")
+
+    def _sum(col: str | None, alias: str) -> str:
+        # `col in cols` keeps this safe on a DB where a migration hasn't landed.
+        return (f"COALESCE(SUM({col}), 0) AS {alias}"
+                if col and col in cols else f"0 AS {alias}")
+
+    parts = [
+        "COUNT(*) AS submissions",
+        _sum(spec.views, "views"),
+        _sum(spec.faves, "favorites"),
+        _sum(spec.comments, "comments"),
+        # Score rides in its own column so a booru's net up−down total is never
+        # mistaken for a view count.
+        _sum(spec.score, "score"),
+    ]
     row = conn.execute(
-        f"SELECT {', '.join(parts)} FROM {table} WHERE account_id = ?",
+        f"SELECT {', '.join(parts)} FROM {spec.table} WHERE account_id = ?",
         (account_id,),
     ).fetchone()
     return dict(row) if row else None

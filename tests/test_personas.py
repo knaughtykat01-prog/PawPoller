@@ -113,7 +113,8 @@ def test_persona_stats_sums_member_accounts(conn, monkeypatch):
     # personas.persona_stats calls accounts.account_stats via the module attr.
     monkeypatch.setattr(accounts, "account_stats", lambda c, aid, plat: fake.get(aid))
     st = personas.persona_stats(conn, pid)
-    assert st["combined"] == {"submissions": 5, "views": 150, "favorites": 15, "comments": 3}
+    assert st["combined"] == {"submissions": 5, "views": 150, "favorites": 15,
+                              "comments": 3, "score": 0}
     assert set(st["by_platform"]) == {"ib", "fa"}  # a3's "ws" excluded
     assert st["by_platform"]["ib"]["views"] == 100
 

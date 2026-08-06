@@ -13,9 +13,14 @@ Major features:
 """
 
 from __future__ import annotations
+import logging
 import math
 import sqlite3
 from typing import Any
+
+from database import platform_metrics
+
+logger = logging.getLogger(__name__)
 
 
 # ── Top Fans Leaderboard ─────────────────────────────────────
@@ -199,27 +204,11 @@ def _find_spikes(conn: sqlite3.Connection, platform: str, sub_table: str, snap_t
     Results are appended to the shared `results` list (mutated in place).
     Uses platform-aware column names for Wattpad (reads/votes) and Itaku (likes, no views).
     """
-    # Platform-specific metric column mapping
-    _platform_cols = {
-        "ib":  ["views", "favorites_count", "comments_count"],
-        "fa":  ["views", "favorites_count", "comments_count"],
-        "ws":  ["views", "favorites_count", "comments_count"],
-        "sf":  ["views", "favorites_count", "comments_count"],
-        "sqw": ["views", "favorites_count", "comments_count"],
-        "ao3": ["views", "favorites_count", "comments_count"],
-        "da":  ["views", "favorites_count", "comments_count"],
-        "wp":  ["reads", "votes", "comments_count"],
-        "ik":  ["likes", "comments_count"],  # No views column
-        "bsky": ["likes", "reposts", "replies"],  # No views column
-        "tw":  ["views", "likes", "retweets", "replies"],
-        "mast": ["likes", "reposts", "replies"],  # No views column
-        "tum": ["notes"],  # Single engagement metric
-        "pix": ["views", "favorites_count", "comments_count"],  # Gallery shape
-        "thr": ["views", "likes", "reposts", "replies"],
-        "ig":  ["views", "reach", "likes", "comments"],
-        "e621": ["score", "favorites_count", "comments_count"],
-    }
-    metric_cols = _platform_cols.get(platform, ["views", "favorites_count", "comments_count"])
+    # Which metric columns this platform stores — from the canonical registry
+    # (database/platform_metrics.py), so a newly wired platform gets spike
+    # detection without editing this function.
+    metric_cols = (platform_metrics.columns_for(platform)
+                   or ["views", "favorites_count", "comments_count"])
 
     # Get all submission IDs and titles from this platform.
     subs = conn.execute(f"SELECT submission_id, title FROM {sub_table}").fetchall()
@@ -399,54 +388,41 @@ def get_link_combined_stats(conn: sqlite3.Connection, link_id: int) -> dict:
     ).fetchall()
 
     total_views = 0
+    total_score = 0
     total_faves = 0
     total_comments = 0
     subs = []
 
-    _table_map = {"ib": "submissions", "fa": "fa_submissions", "ws": "ws_submissions", "sf": "sf_submissions", "sqw": "sqw_submissions", "ao3": "ao3_submissions", "da": "da_submissions", "wp": "wp_submissions", "ik": "ik_submissions", "bsky": "bsky_submissions", "tw": "tw_submissions", "mast": "mast_submissions", "tum": "tum_submissions", "pix": "pix_submissions", "thr": "thr_submissions", "ig": "ig_submissions", "e621": "e621_submissions"}
-    _metrics = {
-        "ib": ("views", "favorites_count", "comments_count"),
-        "fa": ("views", "favorites_count", "comments_count"),
-        "ws": ("views", "favorites_count", "comments_count"),
-        "sf": ("views", "favorites_count", "comments_count"),
-        "sqw": ("views", "favorites_count", "comments_count"),
-        "ao3": ("views", "favorites_count", "comments_count"),
-        "da": ("views", "favorites_count", "comments_count"),
-        "wp": ("reads", "votes", "comments_count"),
-        "ik": (None, "likes", "comments_count"),
-        "bsky": (None, "likes", "replies"),
-        "tw":  ("views", "likes", "replies"),
-        "mast": (None, "likes", "replies"),
-        "tum": (None, "notes", None),
-        "pix": ("views", "favorites_count", "comments_count"),
-        "thr": ("views", "likes", "replies"),
-        "ig": ("views", "likes", "comments"),
-        "e621": ("score", "favorites_count", "comments_count"),
-    }
-
+    # Table + metric columns come from the canonical registry
+    # (database/platform_metrics.py). The local copy this replaces knew nothing
+    # of FurryNetwork/Furbooru, and mapped e621's `score` into the VIEWS slot —
+    # so a linked set containing a booru post counted net upvotes as page views
+    # (and a downvoted post could take the total DOWN).
     for m in members:
         plat = m["platform"]
-        table = _table_map.get(plat)
-        if not table:
+        spec = platform_metrics.get(plat)
+        if not spec:
             continue
         try:
             row = conn.execute(
-                f"SELECT * FROM {table} WHERE submission_id = ?",
+                f"SELECT * FROM {spec.table} WHERE submission_id = ?",
                 (m["submission_id"],),
             ).fetchone()
-        except Exception:
+        except sqlite3.Error as e:
+            logger.warning("link stats: %s unavailable (%s): %s", plat, spec.table, e)
             continue
         if row:
             r = dict(row)
             r["platform"] = plat
-            v_col, f_col, c_col = _metrics.get(plat, ("views", "favorites_count", "comments_count"))
-            total_views += (r.get(v_col, 0) or 0) if v_col else 0
-            total_faves += (r.get(f_col, 0) or 0) if f_col else 0
-            total_comments += (r.get(c_col, 0) or 0) if c_col else 0
+            total_views += (r.get(spec.views, 0) or 0) if spec.views else 0
+            total_score += (r.get(spec.score, 0) or 0) if spec.score else 0
+            total_faves += (r.get(spec.faves, 0) or 0) if spec.faves else 0
+            total_comments += (r.get(spec.comments, 0) or 0) if spec.comments else 0
             subs.append(r)
 
     return {
         "total_views": total_views,
+        "total_score": total_score,
         "total_favorites": total_faves,
         "total_comments": total_comments,
         "submissions": subs,
@@ -470,56 +446,37 @@ def get_combined_snapshots(conn: sqlite3.Connection, pairs) -> list[dict]:
     # have a snapshot at that exact time.
     time_data: dict[str, dict] = {}
 
-    _snap_map = {"ib": "snapshots", "fa": "fa_snapshots", "ws": "ws_snapshots", "sf": "sf_snapshots", "sqw": "sqw_snapshots", "ao3": "ao3_snapshots", "da": "da_snapshots", "wp": "wp_snapshots", "ik": "ik_snapshots", "bsky": "bsky_snapshots", "tw": "tw_snapshots", "mast": "mast_snapshots", "tum": "tum_snapshots", "pix": "pix_snapshots", "thr": "thr_snapshots", "ig": "ig_snapshots", "e621": "e621_snapshots"}
-    _metrics = {
-        "ib": ("views", "favorites_count", "comments_count"),
-        "fa": ("views", "favorites_count", "comments_count"),
-        "ws": ("views", "favorites_count", "comments_count"),
-        "sf": ("views", "favorites_count", "comments_count"),
-        "sqw": ("views", "favorites_count", "comments_count"),
-        "ao3": ("views", "favorites_count", "comments_count"),
-        "da": ("views", "favorites_count", "comments_count"),
-        "wp": ("reads", "votes", "comments_count"),
-        "ik": (None, "likes", "comments_count"),
-        "bsky": (None, "likes", "replies"),
-        "tw":  ("views", "likes", "replies"),
-        "mast": (None, "likes", "replies"),
-        "tum": (None, "notes", None),
-        "pix": ("views", "favorites_count", "comments_count"),
-        "thr": ("views", "likes", "replies"),
-        "ig": ("views", "likes", "comments"),
-        "e621": ("score", "favorites_count", "comments_count"),
-    }
-
+    # Snapshot table + metric columns come from the canonical registry
+    # (database/platform_metrics.py) — this used to keep its own copy, which
+    # knew nothing of FurryNetwork/Furbooru and charted e621's net `score` as
+    # if it were views.
     for plat, sid in pairs:
-        # Dynamic table lookup for the platform's snapshot table.
-        snap_table = _snap_map.get(plat)
-        if not snap_table:
+        spec = platform_metrics.get(plat)
+        if not spec:
             continue
-        v_col, f_col, c_col = _metrics.get(plat, ("views", "favorites_count", "comments_count"))
-        # Build SELECT with only existing columns
-        select_cols = ["polled_at"]
-        if v_col:
-            select_cols.append(v_col)
-        if f_col:
-            select_cols.append(f_col)
-        if c_col:
-            select_cols.append(c_col)
+        snap_table = spec.snapshots
+        v_col, f_col, c_col = spec.views, spec.faves, spec.comments
+        # Build SELECT with only the columns this platform actually has.
+        select_cols = ["polled_at"] + [c for c in (v_col, spec.score, f_col, c_col) if c]
         try:
             rows = conn.execute(
                 f"SELECT {', '.join(select_cols)} FROM {snap_table} "
                 f"WHERE submission_id = ? ORDER BY polled_at ASC",
                 (sid,),
             ).fetchall()
-        except Exception:
+        except sqlite3.Error as e:
+            logger.warning("combined snapshots: %s unavailable (%s): %s", plat, snap_table, e)
             continue
         for r in rows:
             ts = r["polled_at"]
             if ts not in time_data:
-                time_data[ts] = {"polled_at": ts, "views": 0, "favorites_count": 0, "comments_count": 0}
+                time_data[ts] = {"polled_at": ts, "views": 0, "favorites_count": 0,
+                                 "comments_count": 0, "score": 0}
             # Sum values from multiple platforms at the same timestamp.
-            # Map platform-specific columns to the canonical output keys.
+            # Map platform-specific columns to the canonical output keys, and
+            # keep the score family in its own series.
             time_data[ts]["views"] += (r[v_col] or 0) if v_col else 0
+            time_data[ts]["score"] += (r[spec.score] or 0) if spec.score else 0
             time_data[ts]["favorites_count"] += (r[f_col] or 0) if f_col else 0
             time_data[ts]["comments_count"] += (r[c_col] or 0) if c_col else 0
 

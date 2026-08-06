@@ -1,7 +1,31 @@
 # PawPoller Session Handoff
 
-**Last updated:** 2026-07-31
-**Current version (master):** 3.0.1 — **Two bug fixes (no features).** (1) **In-app updater on Windows:** `routes/api.py::
+**Last updated:** 2026-08-06
+**Current version (master):** 3.1.0 — **One canonical platform-metric registry + a per-widget platform filter on the
+Overview.** The knowledge "which table holds platform X's stats and what are its metric columns called" was hand-copied
+into **15 places** that had drifted. New `database/platform_metrics.py` is the single source of truth (Python twin of
+`frontend/js/platforms.js`, which gains matching metric metadata). **The bug that motivated it:**
+`posting_queries.stat_tables` asked AO3/SquidgeWorld for `hits`/`kudos` — columns that have never existed (the OTW
+archives store plain `views`/`favorites_count`) — the resulting `no such column: hits` was swallowed by a bare
+`except: continue`, and **every AO3 + SqW publication silently reported no stats**. The same map covered 7 of 19
+platforms, so e621/tw/da/ik/bsky/ig/mast/thr/tum/pix/fn/fbr were never looked up at all: only **64 of 118** posted
+publications were getting stats. `routes/posting_api.py::_SNAP_TABLES` had the identical `hits` bug (empty AO3/SqW
+sparklines), and `accounts.account_stats` sniffed for `favorites_count` only, so Twitter/e621/Itaku/Bluesky/Mastodon/
+Tumblr accounts reported **zero favourites** and "By persona" under-counted with them. Registry entries carry a metric
+**family** — `views` / `score` (net up−down, may be negative: e621, Furbooru) / `engagement` — and score platforms
+declare `views=None`, which structurally prevents the old conflation where the link/collection/group roll-ups summed
+e621's score as page views. **Expect Library/analytics totals to JUMP after deploy — that is the fix, not a
+regression.** `tests/test_platform_metrics.py` (28 tests) is the real guard: it PRAGMA-checks every declared column
+against a fresh schema and asserts the JS + Python registries agree, because a registry deduplicates a wrong column
+name just as happily as a right one. Frontend: `app.js`'s four hand-written platform blocks (34-promise fetch, totals,
+breakdown grid, roll-up, chart list) are now loops over `window.PLATFORMS` — which finally puts **FurryNetwork and
+Furbooru on the Overview** — and charts/cards are labelled in each platform's own vocabulary ("AO3 Hits", "Tumblr
+Notes"). **New feature:** ⚙ Customize → 🐾 on any Overview widget picks which platforms it counts; `cfg.exclude` stores
+what's switched OFF so newly connected platforms are auto-included, and a filtered widget shows a "3 of 19 platforms"
+tag. **Follow-up parked:** e621/Furbooru milestone alerts still measure score against the view thresholds and say
+"views" (behaviour deliberately unchanged so alerts don't stop).
+
+**Prior — 3.0.1 — Two bug fixes (no features).** (1) **In-app updater on Windows:** `routes/api.py::
 apply_update` never exited the process, so the detached `_update.bat`'s robocopy hit the still-locked `PawPoller.exe`/DLLs
 → `ERROR 32` + partial update (the reported incident). Fix: schedule `threading.Timer(1.5, os._exit(0))` after responding
 (mirrors the `/settings` restart endpoint; covers Linux AppImage too) + `.bat` grace 2 s→5 s (`_UPDATE_EXIT_GRACE_SECONDS`);

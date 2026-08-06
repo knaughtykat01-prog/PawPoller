@@ -41,10 +41,35 @@ def test_get_combined_snapshots_merges_by_timestamp():
 
         series = aq.get_combined_snapshots(conn, [("fa", "100"), ("tw", "200")])
         assert [s["polled_at"] for s in series] == ["2026-01-01 00:00", "2026-01-02 00:00"]
-        # tw likes/replies map onto the canonical faves/comments keys.
+        # tw likes/replies map onto the canonical faves/comments keys. `score`
+        # rides in its own series (0 here — neither platform is score-model).
         assert series[0] == {"polled_at": "2026-01-01 00:00", "views": 15,
-                             "favorites_count": 5, "comments_count": 1}
+                             "score": 0, "favorites_count": 5, "comments_count": 1}
         assert series[1]["views"] == 20 and series[1]["favorites_count"] == 4
+    finally:
+        conn.close()
+
+
+def test_get_combined_snapshots_keeps_booru_score_out_of_views():
+    """e621/Furbooru report a net up−down score, not views. Merging a booru
+    submission into a combined series must not inflate the view line — the
+    per-call metric map used to put `score` in the views slot."""
+    conn = get_connection()
+    try:
+        _seed_two_platform_piece(conn)
+        conn.execute("INSERT INTO fa_snapshots (submission_id, polled_at, views, favorites_count, comments_count) "
+                     "VALUES (100, '2026-01-01 00:00', 10, 2, 1)")
+        conn.execute("INSERT INTO e621_submissions (submission_id, title) VALUES ('300', 'Art')")
+        conn.execute("INSERT INTO e621_snapshots (submission_id, polled_at, score, up_score,"
+                     " down_score, favorites_count, comments_count) "
+                     "VALUES ('300', '2026-01-01 00:00', 63, 66, -3, 161, 0)")
+        conn.commit()
+
+        series = aq.get_combined_snapshots(conn, [("fa", "100"), ("e621", "300")])
+        assert len(series) == 1
+        assert series[0]["views"] == 10          # NOT 73
+        assert series[0]["score"] == 63
+        assert series[0]["favorites_count"] == 163
     finally:
         conn.close()
 

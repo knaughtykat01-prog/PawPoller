@@ -66,9 +66,16 @@ _STAT_PUBS = [
      "stats": {"views": 10, "favorites_count": 1, "comments_count": 0}},
     {"content_type": "story", "story_name": "Quiet", "platform": "ws", "status": "posted",
      "stats": {"views": 5, "favorites_count": 2, "comments_count": 3}},
-    # Hit: AO3-style naming — `reads`/`kudos` must resolve to views/favourites.
+    # Hit: AO3. The SITE says hits/kudos, but ao3_queries stores plain
+    # views/favorites_count — this fixture used to claim `reads`/`kudos`, which
+    # is the same false belief that made posting_queries ask for a `hits` column
+    # that doesn't exist and silently drop every AO3 publication's stats.
     {"content_type": "story", "story_name": "Hit", "platform": "ao3", "status": "posted",
-     "stats": {"reads": 100, "kudos": 7, "comments_count": 1}},
+     "stats": {"views": 100, "favorites_count": 7, "comments_count": 1}},
+    # Wattpad genuinely does use different columns (reads/votes) — the registry
+    # resolves those to the canonical views/faves.
+    {"content_type": "story", "story_name": "Hit", "platform": "wp", "status": "posted",
+     "stats": {"reads": 20, "votes": 3, "comments_count": 0}},
 ]
 
 
@@ -79,9 +86,11 @@ def _run_stats(**kw):
 
 def test_pools_stats_across_platforms_and_naming_variants():
     works = {w["name"]: w for w in _run_stats()}
-    assert works["Quiet"]["stats"] == {"views": 15, "favorites": 3, "comments": 3}
-    # reads -> views, kudos -> favourites
-    assert works["Hit"]["stats"] == {"views": 100, "favorites": 7, "comments": 1}
+    assert works["Quiet"]["stats"] == {
+        "views": 15, "favorites": 3, "comments": 3, "score": 0}
+    # AO3 views + Wattpad reads pool into views; favorites_count + votes into favourites.
+    assert works["Hit"]["stats"] == {
+        "views": 120, "favorites": 10, "comments": 1, "score": 0}
 
 
 def test_sort_by_each_metric():
@@ -90,10 +99,28 @@ def test_sort_by_each_metric():
     assert [w["name"] for w in _run_stats(sort="comments")] == ["Quiet", "Hit"]
 
 
+def test_score_platforms_pool_separately_from_views():
+    """e621/Furbooru report a net up−down score, not views. It must never be
+    added to a view total (it can be negative), but favourites still pool."""
+    pubs = [
+        {"content_type": "artwork", "story_name": "Art", "platform": "fa", "status": "posted",
+         "stats": {"views": 50, "favorites_count": 2, "comments_count": 0}},
+        {"content_type": "artwork", "story_name": "Art", "platform": "e621", "status": "posted",
+         "stats": {"score": 63, "favorites_count": 161, "comments_count": 0}},
+        {"content_type": "artwork", "story_name": "Art", "platform": "fbr", "status": "posted",
+         "stats": {"score": -1, "favorites_count": 2, "comments_count": 1}},
+    ]
+    works = assemble_works(stories=[], artworks=[{"name": "Art", "title": "Art"}],
+                           pubs=pubs, acct_to_persona={}, personas={})["works"]
+    assert works[0]["stats"] == {
+        "views": 50, "favorites": 165, "comments": 1, "score": 62}
+
+
 def test_stats_default_to_zero_without_stat_carrying_pubs():
     # PUBS (the shared fixture) carry no `stats` — pooling must not explode.
     works = {w["name"]: w for w in _run(type="all")["works"]}
-    assert works["My_Story"]["stats"] == {"views": 0, "favorites": 0, "comments": 0}
+    assert works["My_Story"]["stats"] == {
+        "views": 0, "favorites": 0, "comments": 0, "score": 0}
 
 
 def test_persona_filter():

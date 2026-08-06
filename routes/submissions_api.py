@@ -23,6 +23,7 @@ from fastapi.responses import Response
 from database.db import get_connection
 from database import accounts as accounts_db
 from database import personas as personas_db
+from database import platform_metrics
 from database import posting_queries
 
 logger = logging.getLogger(__name__)
@@ -90,19 +91,19 @@ def assemble_works(
         })
         # Pool live stats across every publication of this work (2.147.0), so the
         # Library can sort by performance and the Overview's stat cards can deep-link
-        # to a sorted view. Platforms name the same metric differently
-        # (views/hits/reads, favorites_count/kudos/votes), so resolve per row before
-        # summing — the same convention the story detail uses. Publications carry
-        # `stats` only when fetched via get_publications_with_stats; without it these
-        # stay 0 and sorting simply falls back to a stable order.
-        views = faves = comments = 0
-        for p in wp:
-            st = p.get("stats") or {}
-            views += st.get("views") or st.get("hits") or st.get("reads") or 0
-            faves += st.get("favorites_count") or st.get("kudos") or st.get("votes") or 0
-            comments += st.get("comments_count") or 0
+        # to a sorted view. Platforms name the same metric differently, so the
+        # per-platform column knowledge lives in database/platform_metrics.py and
+        # `pooled` resolves it per row before summing. It also keeps the metric
+        # FAMILIES apart: e621/Furbooru report a net up−down score (which can be
+        # negative), so that lands in its own `score` total instead of being added
+        # to views. Publications carry `stats` only when fetched via
+        # get_publications_with_stats; without it these stay 0 and sorting simply
+        # falls back to a stable order.
+        totals = platform_metrics.pooled(
+            (p.get("platform"), p.get("stats")) for p in wp)
         return platforms, len(wp), pids, {
-            "views": views, "favorites": faves, "comments": comments}
+            "views": totals["views"], "favorites": totals["faves"],
+            "comments": totals["comments"], "score": totals["score"]}
 
     works: list[dict] = []
 
@@ -190,8 +191,9 @@ def assemble_works(
         works.sort(key=lambda w: w["title"].lower())
     elif sort == "platforms":
         works.sort(key=lambda w: len(w["platforms"]), reverse=True)
-    elif sort in ("views", "favorites", "comments"):
+    elif sort in ("views", "favorites", "comments", "score"):
         # Performance sorts (2.147.0) — feed the Overview stat cards' deep-links.
+        # `score` joins them now that the booru family's metric survives pooling.
         works.sort(key=lambda w: (w.get("stats") or {}).get(sort, 0), reverse=True)
     else:  # recent
         works.sort(key=lambda w: (w.get("created_at") or ""), reverse=True)
@@ -205,22 +207,26 @@ def assemble_works(
     }
 
 
-# Stable column order for the complete export. Different platforms report
-# different metrics (AO3/SQW use hits+kudos+bookmarks, Wattpad uses reads+votes),
-# so every metric gets its own column and rows fill only what applies.
-_EXPORT_COLUMNS = [
+# Stable column order for the complete export. The four canonical metrics come
+# first — every platform's headline numbers normalised by the registry, so a
+# Wattpad row's `reads` and an AO3 row's hits both land in `views`, and the
+# booru family's net score lands in `score` instead of being lost. After them,
+# one column per platform-specific extra the registry knows about (bookmarks,
+# retweets, reach, up/down score …), generated from the registry so a new
+# platform's metrics appear in the export without touching this file.
+_BASE_EXPORT_COLUMNS = [
     "content_type", "work", "title", "chapter", "platform",
     "account", "external_id", "url", "posted_at", "updated_at", "status", "rating", "words",
-    "views", "favorites", "comments", "kudos", "bookmarks", "hits", "reads", "votes",
+    "views", "score", "favorites", "comments",
 ]
 
-# stats dict key → CSV column (keys vary per platform table; see
-# posting_queries.get_publications_with_stats).
-_STAT_KEY_TO_COL = {
-    "views": "views", "favorites_count": "favorites", "comments_count": "comments",
-    "kudos": "kudos", "bookmarks": "bookmarks", "hits": "hits",
-    "reads": "reads", "votes": "votes",
-}
+_EXTRA_COLUMNS = sorted({
+    col
+    for code in platform_metrics.ALL_CODES
+    for col in (platform_metrics.get(code).extra if platform_metrics.get(code) else ())
+})
+
+_EXPORT_COLUMNS = _BASE_EXPORT_COLUMNS + _EXTRA_COLUMNS
 
 
 @works_router.get("/works/export.csv")
@@ -259,11 +265,17 @@ def export_works_csv():
             "status": pub.get("status", ""),
             "rating": pub.get("rating_used", ""),
             "words": pub.get("word_count", ""),
+            # Canonical metrics — already normalised per platform by the registry.
+            "views": stats.get("views"),
+            "score": stats.get("score"),
+            "favorites": stats.get("faves"),
+            "comments": stats.get("comments"),
         }
-        for key, col in _STAT_KEY_TO_COL.items():
-            if key in stats and stats[key] is not None:
-                row[col] = stats[key]
-        writer.writerow([row.get(c, "") for c in _EXPORT_COLUMNS])
+        for col in _EXTRA_COLUMNS:
+            if stats.get(col) is not None:
+                row[col] = stats[col]
+        writer.writerow(["" if row.get(c) is None else row.get(c, "")
+                         for c in _EXPORT_COLUMNS])
 
     stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
     return Response(

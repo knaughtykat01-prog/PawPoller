@@ -259,13 +259,41 @@ class TestAccountStats:
         conn.execute("INSERT INTO submissions (submission_id, account_id, views, favorites_count, comments_count) VALUES (3, ?, 7, 1, 0)", (a2,))
         conn.commit()
         s1 = accounts.account_stats(conn, a1, "ib")
-        assert s1 == {"submissions": 2, "views": 150, "favorites": 15, "comments": 3}
+        assert s1 == {"submissions": 2, "views": 150, "favorites": 15,
+                      "comments": 3, "score": 0}
         s2 = accounts.account_stats(conn, a2, "ib")
-        assert s2 == {"submissions": 1, "views": 7, "favorites": 1, "comments": 0}
+        assert s2 == {"submissions": 1, "views": 7, "favorites": 1,
+                      "comments": 0, "score": 0}
+
+    def test_engagement_platform_favourites_are_not_dropped(self, conn):
+        """Twitter stores favourites in a `likes` column. This used to sniff for
+        `favorites_count` only and write 0, so every Twitter/e621/Itaku/Bluesky/
+        Mastodon/Tumblr account reported zero favourites — and the "By persona"
+        roll-up under-counted with it."""
+        a = accounts.create_account(conn, "tw", "Main", is_default=True)
+        conn.execute(
+            "INSERT INTO tw_submissions (submission_id, account_id, views, likes, replies)"
+            " VALUES ('1', ?, 1659, 33, 2)", (a,))
+        conn.commit()
+        st = accounts.account_stats(conn, a, "tw")
+        assert st["views"] == 1659
+        assert st["favorites"] == 33      # was 0 before the registry
+        assert st["comments"] == 2
+
+    def test_score_platform_keeps_score_out_of_views(self, conn):
+        a = accounts.create_account(conn, "e621", "Main", is_default=True)
+        conn.execute(
+            "INSERT INTO e621_submissions (submission_id, account_id, score,"
+            " favorites_count, comments_count) VALUES ('1', ?, 63, 161, 0)", (a,))
+        conn.commit()
+        st = accounts.account_stats(conn, a, "e621")
+        assert st["views"] == 0           # e621 exposes no view count
+        assert st["score"] == 63
+        assert st["favorites"] == 161
 
     def test_unknown_platform_returns_none(self, conn):
-        # account_stats gracefully returns None for a platform it has no
-        # submissions table mapping for (all 11 real platforms are supported).
+        # account_stats gracefully returns None for a platform with no registry
+        # entry (and for one whose table isn't account-aware yet).
         a = accounts.create_account(conn, "zzz", "X", is_default=True)
         assert accounts.account_stats(conn, a, "zzz") is None
 

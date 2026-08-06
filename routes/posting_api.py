@@ -19,6 +19,7 @@ from fastapi.responses import FileResponse, StreamingResponse
 
 import config
 from database.db import get_connection
+from database import platform_metrics
 from database import posting_queries
 
 logger = logging.getLogger(__name__)
@@ -118,27 +119,27 @@ def get_story_detail(story_name: str):
 
             # Per-publication snapshots (last 30 days, capped at 60 points) for
             # the sparkline + comparison chart in batch 3. Each platform's
-            # snapshots table has a different name and column set, so we map
-            # platform → (table, id_col, value_col) for the primary metric.
-            # Bluesky/Twitter/Itaku use likes-equivalent metrics; others use
-            # views/hits/reads. The frontend renders whichever value is
-            # present without caring about the source column.
-            _SNAP_TABLES = {
-                "ib":   ("snapshots",     "submission_id", "views"),
-                "fa":   ("fa_snapshots",  "submission_id", "views"),
-                "ws":   ("ws_snapshots",  "submission_id", "views"),
-                "sf":   ("sf_snapshots",  "submission_id", "views"),
-                "sqw":  ("sqw_snapshots", "submission_id", "hits"),
-                "ao3":  ("ao3_snapshots", "submission_id", "hits"),
-                "wp":   ("wp_snapshots",  "submission_id", "reads"),
-                "da":   ("da_snapshots",  "submission_id", "views"),
-                "ik":   ("ik_snapshots",  "submission_id", "likes"),
-                "bsky": ("bsky_snapshots","submission_id", "likes"),
-                "tw":   ("tw_snapshots",  "submission_id", "views"),
-            }
+            # snapshots table has a different name and column set, so the
+            # canonical registry (database/platform_metrics.py) resolves
+            # platform → (table, id_col, primary metric column). The frontend
+            # renders whichever value is present without caring about the
+            # source column.
+            #
+            # The local map this replaces covered 11 platforms and asked
+            # AO3/SquidgeWorld for a `hits` column that doesn't exist (they
+            # store plain `views`), so those sparklines were always empty —
+            # the `sqlite3.OperationalError` below swallowed it. Score-model
+            # platforms chart their score; engagement-only ones chart faves.
+            def _snap_metric(code):
+                spec = platform_metrics.get(code)
+                if not spec:
+                    return None
+                col = spec.views or spec.score or spec.faves
+                return (spec.snapshots, spec.id_col, col) if col else None
+
             for pub in pubs:
                 pub["snapshots"] = []
-                cfg = _SNAP_TABLES.get(pub["platform"])
+                cfg = _snap_metric(pub["platform"])
                 if not cfg or not pub.get("external_id"):
                     continue
                 table, id_col, value_col = cfg

@@ -18,6 +18,8 @@ import logging
 import sqlite3
 from datetime import datetime, timezone
 
+from database import platform_metrics
+
 logger = logging.getLogger(__name__)
 
 
@@ -147,17 +149,16 @@ def get_publications_with_stats(
     pubs = get_publications(conn, story_name=story_name, status="posted",
                             content_type=content_type)
 
-    # Platform table mapping: platform → (table, id_col, stat_columns)
-    stat_tables = {
-        "ib": ("submissions", "submission_id", ["views", "favorites_count", "comments_count"]),
-        "fa": ("fa_submissions", "submission_id", ["views", "favorites_count", "comments_count"]),
-        "ws": ("ws_submissions", "submission_id", ["views", "favorites_count", "comments_count"]),
-        "sf": ("sf_submissions", "submission_id", ["views", "favorites_count", "comments_count"]),
-        "sqw": ("sqw_submissions", "submission_id", ["hits", "kudos", "comments_count", "bookmarks"]),
-        "ao3": ("ao3_submissions", "submission_id", ["hits", "kudos", "comments_count", "bookmarks"]),
-        "wp": ("wp_submissions", "submission_id", ["reads", "votes", "comments_count"]),
-    }
-
+    # Platform → table/column knowledge lives in ONE place now
+    # (database/platform_metrics.py). This function used to carry its own copy
+    # covering 7 of 19 platforms, and its AO3/SqW entry asked for `hits`/`kudos`
+    # — columns that don't exist. The resulting `no such column` was swallowed
+    # by a bare `except: continue`, so every AO3 + SquidgeWorld publication
+    # reported no stats at all, and e621/Twitter/DA/Itaku/Bluesky/Instagram/
+    # Mastodon/Threads/Tumblr/Pixiv/FN/Furbooru were never looked up. Both are
+    # fixed by deferring to the registry; read_stats logs loudly rather than
+    # swallowing a mismatch.
+    #
     # Perf guardrail (2.165.0): the old code ran ONE stat query per publication —
     # O(pubs) queries, which the Library's /api/works list paid on every load.
     # Batch it: group external_ids by platform and fetch each platform's stats in
@@ -166,29 +167,13 @@ def get_publications_with_stats(
     for pub in pubs:
         plat = pub["platform"]
         ext = pub["external_id"]
-        if plat in stat_tables and ext:
+        if ext and platform_metrics.get(plat):
             ids_by_plat.setdefault(plat, set()).add(ext)
 
     stats_map: dict[tuple, dict] = {}     # (platform, str(external_id)) -> stats
     for plat, ids in ids_by_plat.items():
-        table, id_col, cols = stat_tables[plat]
-        col_str = ", ".join(cols)
-        id_list = list(ids)
-        for i in range(0, len(id_list), 900):
-            chunk = id_list[i:i + 900]
-            # Match the old single-row path: digit ids compared as ints (some
-            # submission tables store the id as INTEGER).
-            norm = [int(x) if str(x).isdigit() else x for x in chunk]
-            ph = ",".join("?" * len(norm))
-            try:
-                rows = conn.execute(
-                    f"SELECT {id_col}, {col_str} FROM {table} WHERE {id_col} IN ({ph})",
-                    norm,
-                ).fetchall()
-            except Exception:
-                continue  # Table doesn't exist / column mismatch
-            for r in rows:
-                stats_map[(plat, str(r[id_col]))] = {c: r[c] for c in cols}
+        for ext_id, stats in platform_metrics.read_stats(conn, plat, ids).items():
+            stats_map[(plat, ext_id)] = stats
 
     enriched = []
     for pub in pubs:

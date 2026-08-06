@@ -2944,42 +2944,29 @@ const App = {
     async renderOverview() {
         this._loading();
         try {
-            /* Fetch all platform data in parallel; .catch() fallbacks prevent one failure from blocking all */
-            const [ibSummary, faSummary, wsSummary, sfSummary, sqwSummary, ao3Summary, daSummary, wpSummary, ikSummary, bskySummary, twSummary, mastSummary, tumSummary, pixSummary, thrSummary, igSummary, e621Summary, ibAgg, faAgg, wsAgg, sfAgg, sqwAgg, ao3Agg, daAgg, wpAgg, ikAgg, bskyAgg, twAgg, mastAgg, tumAgg, pixAgg, thrAgg, igAgg, e621Agg, topFans, trending] = await Promise.all([
-                API.getSummary().catch(() => null),
-                API.getFASummary().catch(() => null),
-                API.getWSSummary().catch(() => null),
-                API.getSFSummary().catch(() => null),
-                API.getSQWSummary().catch(() => null),
-                API.getAO3Summary().catch(() => null),
-                API.getDASummary().catch(() => null),
-                API.getWPSummary().catch(() => null),
-                API.getIKSummary().catch(() => null),
-                API.getBSKYSummary().catch(() => null),
-                API.getTWSummary().catch(() => null),
-                API.getMASTSummary().catch(() => null),
-                API.getTUMSummary().catch(() => null),
-                API.getPIXSummary().catch(() => null),
-                API.getTHRSummary().catch(() => null),
-                API.getIGSummary().catch(() => null),
-                API.getE621Summary().catch(() => null),
-                API.getAggregate(Utils.getDateRange(this._dateRange)).catch(() => null),
-                API.getFAAggregate(Utils.getDateRange(this._dateRange)).catch(() => null),
-                API.getWSAggregate(Utils.getDateRange(this._dateRange)).catch(() => null),
-                API.getSFAggregate(Utils.getDateRange(this._dateRange)).catch(() => null),
-                API.getSQWAggregate(Utils.getDateRange(this._dateRange)).catch(() => null),
-                API.getAO3Aggregate(Utils.getDateRange(this._dateRange)).catch(() => null),
-                API.getDAAggregate(Utils.getDateRange(this._dateRange)).catch(() => null),
-                API.getWPAggregate(Utils.getDateRange(this._dateRange)).catch(() => null),
-                API.getIKAggregate(Utils.getDateRange(this._dateRange)).catch(() => null),
-                API.getBSKYAggregate(Utils.getDateRange(this._dateRange)).catch(() => null),
-                API.getTWAggregate(Utils.getDateRange(this._dateRange)).catch(() => null),
-                API.getMASTAggregate(Utils.getDateRange(this._dateRange)).catch(() => null),
-                API.getTUMAggregate(Utils.getDateRange(this._dateRange)).catch(() => null),
-                API.getPIXAggregate(Utils.getDateRange(this._dateRange)).catch(() => null),
-                API.getTHRAggregate(Utils.getDateRange(this._dateRange)).catch(() => null),
-                API.getIGAggregate(Utils.getDateRange(this._dateRange)).catch(() => null),
-                API.getE621Aggregate(Utils.getDateRange(this._dateRange)).catch(() => null),
+            /* Fetch every platform's summary + aggregate in parallel, driven by
+             * window.PLATFORMS; .catch() fallbacks prevent one failure blocking
+             * the page. Inkbunny is the original platform so its endpoints are
+             * unprefixed (getSummary/getAggregate); every other code follows
+             * get{CODE}Summary / get{CODE}Aggregate.
+             *
+             * This replaced a hand-written list of 34 destructured promises
+             * that had to be extended in four more places to add a platform —
+             * which is why FurryNetwork and Furbooru (2.200/2.201) appeared
+             * nowhere on the Overview. Driving it off the registry means a new
+             * platform lands here the moment it has a registry entry, and
+             * `callOrNull` keeps it safe if the API method doesn't exist yet. */
+            const _range = Utils.getDateRange(this._dateRange);
+            const codes = window.PLATFORMS.map(p => p.code);
+            const apiName = (code, kind) =>
+                (code === 'ib' ? 'get' + kind : 'get' + code.toUpperCase() + kind);
+            const callOrNull = (name, arg) => (typeof API[name] === 'function'
+                ? API[name](arg).catch(() => null)
+                : Promise.resolve(null));
+
+            const [summaries, aggregates, topFans, trending] = await Promise.all([
+                Promise.all(codes.map(c => callOrNull(apiName(c, 'Summary')))),
+                Promise.all(codes.map(c => callOrNull(apiName(c, 'Aggregate'), _range))),
                 API.getTopFans(10).catch(() => ({ fans: [] })),
                 API.getTrending({ hours: 24, threshold: 2.0 }).catch(() => ({ trending: [] })),
             ]);
@@ -2995,188 +2982,113 @@ const App = {
                 API.getPostingQueue().catch(() => ({ queue: [] })),
             ]);
 
-            const ib = ibSummary || {};
-            const fa = faSummary || {};
-            const ws = wsSummary || {};
-            const sf = sfSummary || {};
-            const sqw = sqwSummary || {};
-            const ao3 = ao3Summary || {};
-            const da = daSummary || {};
-            const wp = wpSummary || {};
-            const ik = ikSummary || {};
-            const bsky = bskySummary || {};
-            const tw = twSummary || {};
-            const mast = mastSummary || {};
-            const tum = tumSummary || {};
-            const pix = pixSummary || {};
-            const thr = thrSummary || {};
-            const ig = igSummary || {};
-            const e621 = e621Summary || {};
+            /* code -> payload. Every widget reads these through
+             * window.platformStat, so no widget needs to know that Wattpad
+             * calls views "reads" or that Tumblr's only metric is "notes". */
+            const statsByCode = {};
+            const aggByCode = {};
+            codes.forEach((c, i) => {
+                statsByCode[c] = summaries[i] || {};
+                aggByCode[c] = aggregates[i] || null;
+            });
 
-            /* Sum totals across all platforms for the top-level stat cards.
-             * Wattpad uses 'reads' instead of 'views' and 'votes' instead of 'favorites',
-             * so we map them into the unified totals here.
-             * Itaku has NO views — only likes (mapped to favorites), comments, and reshares. */
-            const totalSubs = (ib.total_submissions || 0) + (fa.total_submissions || 0) + (ws.total_submissions || 0) + (sf.total_submissions || 0) + (sqw.total_submissions || 0) + (ao3.total_submissions || 0) + (da.total_submissions || 0) + (wp.total_submissions || 0) + (ik.total_submissions || 0) + (bsky.total_submissions || 0) + (tw.total_submissions || 0) + (mast.total_submissions || 0) + (tum.total_submissions || 0) + (pix.total_submissions || 0) + (thr.total_submissions || 0) + (ig.total_submissions || 0) + (e621.total_submissions || 0);
-            const totalViews = (ib.total_views || 0) + (fa.total_views || 0) + (ws.total_views || 0) + (sf.total_views || 0) + (sqw.total_views || 0) + (ao3.total_views || 0) + (da.total_views || 0) + (wp.total_reads || wp.total_views || 0) + (tw.total_views || 0) + (pix.total_views || 0) + (thr.total_views || 0) + (ig.total_views || 0);
-            const totalFaves = (ib.total_favorites || 0) + (fa.total_favorites || 0) + (ws.total_favorites || 0) + (sf.total_favorites || 0) + (sqw.total_favorites || 0) + (ao3.total_favorites || 0) + (da.total_favorites || 0) + (wp.total_votes || wp.total_favorites || 0) + (ik.total_likes || 0) + (bsky.total_likes || 0) + (tw.total_likes || 0) + (mast.total_likes || 0) + (tum.total_notes || 0) + (pix.total_favorites || 0) + (thr.total_likes || 0) + (ig.total_likes || 0) + (e621.total_favorites || 0);
-            const totalComments = (ib.total_comments || 0) + (fa.total_comments || 0) + (ws.total_comments || 0) + (sf.total_comments || 0) + (sqw.total_comments || 0) + (ao3.total_comments || 0) + (da.total_comments || 0) + (wp.total_comments || 0) + (ik.total_comments || 0) + (bsky.total_comments || 0) + (tw.total_comments || 0) + (mast.total_comments || mast.total_replies || 0) + (pix.total_comments || 0) + (thr.total_replies || 0) + (ig.total_comments || 0) + (e621.total_comments || 0);
-            const totalDownloads = (da.total_downloads || 0);
-
-            /* Merge top lists across platforms: tag each with _platform, sort desc, take top 10 */
-            const mergeTop = (ibList, faList, wsList, sfList, sqwList, ao3List, daList, wpList, ikList, bskyList, twList, mastList, tumList, pixList, thrList, igList, key) => {
+            /* Merge a top-list across platforms: tag each row with _platform,
+             * normalise the platform's own metric names onto the unified keys
+             * the card renderer reads (Wattpad reads/votes, Itaku+Bluesky+
+             * Mastodon+Threads+Instagram+Twitter likes, Tumblr notes), sort
+             * desc. Kept UNSLICED so a widget filtered to a few platforms still
+             * has ten rows to show — the slice happens per widget at render.
+             *
+             * `pick` receives the platform's summary payload and returns its
+             * list; platforms with no such list simply contribute nothing. */
+            const mergeTop = (pick, key) => {
                 const merged = [];
-                (ibList || []).forEach(item => merged.push({ ...item, _platform: 'ib' }));
-                (faList || []).forEach(item => merged.push({ ...item, _platform: 'fa' }));
-                (wsList || []).forEach(item => merged.push({ ...item, _platform: 'ws' }));
-                (sfList || []).forEach(item => merged.push({ ...item, _platform: 'sf' }));
-                (sqwList || []).forEach(item => merged.push({ ...item, _platform: 'sqw' }));
-                (ao3List || []).forEach(item => merged.push({ ...item, _platform: 'ao3' }));
-                (daList || []).forEach(item => merged.push({ ...item, _platform: 'da' }));
-                /* Wattpad uses 'reads' for views and 'votes' for favorites — map to unified keys */
-                (wpList || []).forEach(item => merged.push({ ...item, views: item.reads || item.views || 0, favorites_count: item.votes || item.favorites_count || 0, _platform: 'wp' }));
-                /* Itaku has no views — map likes to favorites_count for unified merging */
-                (ikList || []).forEach(item => merged.push({ ...item, favorites_count: item.likes || item.favorites_count || 0, _platform: 'ik' }));
-                /* Bluesky has no views — map likes to favorites_count for unified merging */
-                (bskyList || []).forEach(item => merged.push({ ...item, favorites_count: item.likes || item.favorites_count || 0, _platform: 'bsky' }));
-                /* X/Twitter maps likes to favorites_count for unified merging */
-                (twList || []).forEach(item => merged.push({ ...item, favorites_count: item.likes || item.favorites_count || 0, _platform: 'tw' }));
-                /* Mastodon has no views — map likes to favorites_count for unified merging */
-                (mastList || []).forEach(item => merged.push({ ...item, favorites_count: item.likes || item.favorites_count || 0, _platform: 'mast' }));
-                /* Tumblr has no views — map notes to favorites_count for unified merging */
-                (tumList || []).forEach(item => merged.push({ ...item, favorites_count: item.notes || item.favorites_count || 0, _platform: 'tum' }));
-                /* Pixiv uses the gallery shape (views + favorites_count) directly */
-                (pixList || []).forEach(item => merged.push({ ...item, _platform: 'pix' }));
-                /* Threads has views; map likes to favorites_count for unified merging */
-                (thrList || []).forEach(item => merged.push({ ...item, favorites_count: item.likes || item.favorites_count || 0, _platform: 'thr' }));
-                /* Instagram has views; map likes to favorites_count for unified merging */
-                (igList || []).forEach(item => merged.push({ ...item, favorites_count: item.likes || item.favorites_count || 0, _platform: 'ig' }));
+                window.PLATFORMS.forEach(p => {
+                    const s = statsByCode[p.code] || {};
+                    // A views list is meaningless for a platform with no view
+                    // counter (Itaku/Bluesky/Mastodon/Tumblr/e621/Furbooru).
+                    if (key === 'views' && !p.metrics.views) return;
+                    (pick(s) || []).forEach(item => merged.push({
+                        ...item,
+                        views: item.views != null ? item.views : (item.reads || 0),
+                        favorites_count: item.favorites_count != null ? item.favorites_count
+                            : (item.likes != null ? item.likes
+                                : (item.notes != null ? item.notes : (item.votes || 0))),
+                        _platform: p.code,
+                    }));
+                });
                 merged.sort((a, b) => (b[key] || 0) - (a[key] || 0));
-                return merged.slice(0, 10);
+                return merged;
             };
 
-            const topViewed = mergeTop(ib.top_viewed, fa.top_viewed, ws.top_viewed, sf.top_viewed, sqw.top_viewed, ao3.top_viewed, da.top_viewed, wp.top_viewed || wp.top_read, null, null, tw.top_viewed, null, null, pix.top_viewed, thr.top_viewed, ig.top_viewed, 'views');
-            const topFaved = mergeTop(ib.top_faved, fa.top_faved, ws.top_faved, sf.top_faved, sqw.top_faved, ao3.top_faved, da.top_faved, wp.top_faved || wp.top_voted, ik.top_liked || ik.top_faved, bsky.top_liked || bsky.top_faved, tw.top_liked || tw.top_faved, mast.top_liked || mast.top_faved, tum.top_noted, pix.top_faved, thr.top_liked, ig.top_liked, 'favorites_count');
+            const topViewed = mergeTop(s => s.top_viewed || s.top_read, 'views');
+            const topFaved = mergeTop(
+                s => s.top_faved || s.top_liked || s.top_voted || s.top_noted,
+                'favorites_count');
 
-            /* Merge recent faves + comments into a unified timeline, sorted newest first */
+            /* Merge recent faves + comments into a unified timeline, newest
+             * first. Each platform names its fave feed after its own metric
+             * (recent_likes / recent_notes / recent_votes / recent_bookmarks),
+             * so try them in order and take whichever exists. Left unsliced —
+             * the widget slices after applying its platform filter. */
             const recentActivity = [];
-            (ib.recent_faves || []).forEach(item => recentActivity.push({ ...item, _platform: 'ib', _type: 'fave' }));
-            (ib.recent_comments || []).forEach(item => recentActivity.push({ ...item, _platform: 'ib', _type: 'comment' }));
-            (fa.recent_faves || []).forEach(item => recentActivity.push({ ...item, _platform: 'fa', _type: 'fave' }));
-            (fa.recent_comments || []).forEach(item => recentActivity.push({ ...item, _platform: 'fa', _type: 'comment' }));
-            (ws.recent_faves || []).forEach(item => recentActivity.push({ ...item, _platform: 'ws', _type: 'fave' }));
-            (ws.recent_comments || []).forEach(item => recentActivity.push({ ...item, _platform: 'ws', _type: 'comment' }));
-            (sf.recent_faves || []).forEach(item => recentActivity.push({ ...item, _platform: 'sf', _type: 'fave' }));
-            (sf.recent_comments || []).forEach(item => recentActivity.push({ ...item, _platform: 'sf', _type: 'comment' }));
-            (sqw.recent_faves || []).forEach(item => recentActivity.push({ ...item, _platform: 'sqw', _type: 'fave' }));
-            (sqw.recent_comments || []).forEach(item => recentActivity.push({ ...item, _platform: 'sqw', _type: 'comment' }));
-            (ao3.recent_faves || []).forEach(item => recentActivity.push({ ...item, _platform: 'ao3', _type: 'fave' }));
-            (ao3.recent_comments || []).forEach(item => recentActivity.push({ ...item, _platform: 'ao3', _type: 'comment' }));
-            (da.recent_faves || []).forEach(item => recentActivity.push({ ...item, _platform: 'da', _type: 'fave' }));
-            (da.recent_comments || []).forEach(item => recentActivity.push({ ...item, _platform: 'da', _type: 'comment' }));
-            (wp.recent_faves || wp.recent_votes || []).forEach(item => recentActivity.push({ ...item, _platform: 'wp', _type: 'fave' }));
-            (wp.recent_comments || []).forEach(item => recentActivity.push({ ...item, _platform: 'wp', _type: 'comment' }));
-            (ik.recent_faves || ik.recent_likes || []).forEach(item => recentActivity.push({ ...item, _platform: 'ik', _type: 'fave' }));
-            (ik.recent_comments || []).forEach(item => recentActivity.push({ ...item, _platform: 'ik', _type: 'comment' }));
-            (bsky.recent_faves || bsky.recent_likes || []).forEach(item => recentActivity.push({ ...item, _platform: 'bsky', _type: 'fave' }));
-            (bsky.recent_comments || []).forEach(item => recentActivity.push({ ...item, _platform: 'bsky', _type: 'comment' }));
-            (tw.recent_faves || tw.recent_likes || []).forEach(item => recentActivity.push({ ...item, _platform: 'tw', _type: 'fave' }));
-            (tw.recent_comments || []).forEach(item => recentActivity.push({ ...item, _platform: 'tw', _type: 'comment' }));
-            (mast.recent_faves || mast.recent_likes || []).forEach(item => recentActivity.push({ ...item, _platform: 'mast', _type: 'fave' }));
-            (mast.recent_comments || []).forEach(item => recentActivity.push({ ...item, _platform: 'mast', _type: 'comment' }));
-            (tum.recent_faves || tum.recent_notes || []).forEach(item => recentActivity.push({ ...item, _platform: 'tum', _type: 'fave' }));
-            (pix.recent_faves || pix.recent_bookmarks || []).forEach(item => recentActivity.push({ ...item, _platform: 'pix', _type: 'fave' }));
-            (pix.recent_comments || []).forEach(item => recentActivity.push({ ...item, _platform: 'pix', _type: 'comment' }));
-            (thr.recent_faves || thr.recent_likes || []).forEach(item => recentActivity.push({ ...item, _platform: 'thr', _type: 'fave' }));
-            (thr.recent_comments || []).forEach(item => recentActivity.push({ ...item, _platform: 'thr', _type: 'comment' }));
-            (ig.recent_faves || ig.recent_likes || []).forEach(item => recentActivity.push({ ...item, _platform: 'ig', _type: 'fave' }));
-            (ig.recent_comments || []).forEach(item => recentActivity.push({ ...item, _platform: 'ig', _type: 'comment' }));
+            window.PLATFORMS.forEach(p => {
+                const s = statsByCode[p.code] || {};
+                const faves = s.recent_faves || s.recent_likes || s.recent_notes
+                    || s.recent_votes || s.recent_bookmarks || [];
+                faves.forEach(item => recentActivity.push(
+                    { ...item, _platform: p.code, _type: 'fave' }));
+                (s.recent_comments || []).forEach(item => recentActivity.push(
+                    { ...item, _platform: p.code, _type: 'comment' }));
+            });
             recentActivity.sort((a, b) => new Date(b.first_seen_at || 0) - new Date(a.first_seen_at || 0));
-
-            /* Per-platform mini stat card showing views, faves, subs with a coloured badge */
-            const platformCard = (badge, label, data, route) => `
-                <a href="#/${route}" class="stat-card" style="text-decoration:none;color:inherit;cursor:pointer;transition:box-shadow 0.2s">
-                    <div class="label">${badge} ${label}</div>
-                    <div style="display:flex;gap:16px;margin-top:6px">
-                        <div><span style="font-size:18px;font-weight:600">${Utils.formatCompact(data.total_views || 0)}</span> <span style="font-size:11px;color:var(--text-muted)">views</span></div>
-                        <div><span style="font-size:18px;font-weight:600">${Utils.formatCompact(data.total_favorites || 0)}</span> <span style="font-size:11px;color:var(--text-muted)">faves</span></div>
-                        <div><span style="font-size:18px;font-weight:600">${Utils.formatCompact(data.total_submissions || 0)}</span> <span style="font-size:11px;color:var(--text-muted)">subs</span></div>
-                    </div>
-                </a>`;
 
             const prefs = await API.getPreferences().catch(() => ({}));
 
-            /* Per-platform stat cards (the classic overview grid) collapsed to
-               a string for the "Platform breakdown" widget. */
-            const platformsHtml = [
-                platformCard('<span class="platform-badge ib">IB</span>', 'Inkbunny', ib, 'ib'),
-                platformCard('<span class="platform-badge fa">FA</span>', 'FurAffinity', fa, 'fa'),
-                platformCard('<span class="platform-badge ws">WS</span>', 'Weasyl', ws, 'ws'),
-                platformCard('<span class="platform-badge sf">SF</span>', 'SoFurry', sf, 'sf'),
-                platformCard('<span class="platform-badge sqw">SqW</span>', 'SquidgeWorld', sqw, 'sqw'),
-                platformCard('<span class="platform-badge ao3">AO3</span>', 'AO3', ao3, 'ao3'),
-                platformCard('<span class="platform-badge da">\u{1F3A8} DA</span>', 'DeviantArt', da, 'da'),
-                platformCard('<span class="platform-badge wp">\u{1F4D9} WP</span>', 'Wattpad', { total_views: wp.total_reads || wp.total_views || 0, total_favorites: wp.total_votes || wp.total_favorites || 0, total_submissions: wp.total_submissions || 0 }, 'wp'),
-                platformCard('<span class="platform-badge ik">\u{1F3AF} IK</span>', 'Itaku', { total_views: 0, total_favorites: ik.total_likes || 0, total_submissions: ik.total_submissions || 0 }, 'ik'),
-                platformCard('<span class="platform-badge bsky">\u{1F98B} BSKY</span>', 'Bluesky', { total_views: 0, total_favorites: bsky.total_likes || 0, total_submissions: bsky.total_submissions || 0 }, 'bsky'),
-                platformCard('<span class="platform-badge tw">\u{1F426} TW</span>', 'X/Twitter', { total_views: tw.total_views || 0, total_favorites: tw.total_likes || 0, total_submissions: tw.total_submissions || 0 }, 'tw'),
-                platformCard('<span class="platform-badge mast">\u{1F418} MAST</span>', 'Mastodon', { total_views: 0, total_favorites: mast.total_likes || 0, total_submissions: mast.total_submissions || 0 }, 'mast'),
-                platformCard('<span class="platform-badge tum">\u{1F4D8} TUM</span>', 'Tumblr', { total_views: 0, total_favorites: tum.total_notes || 0, total_submissions: tum.total_submissions || 0 }, 'tum'),
-                platformCard('<span class="platform-badge pix">\u{1F58C} PIX</span>', 'Pixiv', { total_views: pix.total_views || 0, total_favorites: pix.total_favorites || 0, total_submissions: pix.total_submissions || 0 }, 'pix'),
-                platformCard('<span class="platform-badge thr">\u{1F9F5} THR</span>', 'Threads', { total_views: thr.total_views || 0, total_favorites: thr.total_likes || 0, total_submissions: thr.total_submissions || 0 }, 'thr'),
-                platformCard('<span class="platform-badge ig">\u{1F4F8} IG</span>', 'Instagram', { total_views: ig.total_views || 0, total_favorites: ig.total_likes || 0, total_submissions: ig.total_submissions || 0 }, 'ig'),
-                platformCard('<span class="platform-badge e621">\u{1F43E} e621</span>', 'e621', { total_views: 0, total_favorites: e621.total_favorites || 0, total_submissions: e621.total_submissions || 0 }, 'e621'),
-            ].join('');
-
-            /* Compact per-platform roll-up powering the "Platforms live" +
-               "Best platform" widgets. Views are 0 for platforms that don't expose
-               a view count (Itaku/Bluesky/Mastodon/Tumblr/e621 report engagement
-               only), so they simply never win "best by views". */
-            const platRollup = [
-                ['ib', 'Inkbunny', ib.total_submissions, ib.total_views],
-                ['fa', 'FurAffinity', fa.total_submissions, fa.total_views],
-                ['ws', 'Weasyl', ws.total_submissions, ws.total_views],
-                ['sf', 'SoFurry', sf.total_submissions, sf.total_views],
-                ['sqw', 'SquidgeWorld', sqw.total_submissions, sqw.total_views],
-                ['ao3', 'AO3', ao3.total_submissions, ao3.total_views],
-                ['da', 'DeviantArt', da.total_submissions, da.total_views],
-                ['wp', 'Wattpad', wp.total_submissions, wp.total_reads || wp.total_views],
-                ['ik', 'Itaku', ik.total_submissions, 0],
-                ['bsky', 'Bluesky', bsky.total_submissions, 0],
-                ['tw', 'X/Twitter', tw.total_submissions, tw.total_views],
-                ['mast', 'Mastodon', mast.total_submissions, 0],
-                ['tum', 'Tumblr', tum.total_submissions, 0],
-                ['pix', 'Pixiv', pix.total_submissions, pix.total_views],
-                ['thr', 'Threads', thr.total_submissions, thr.total_views],
-                ['ig', 'Instagram', ig.total_submissions, ig.total_views],
-                ['e621', 'e621', e621.total_submissions, 0],
-            ].map(([code, label, subs, views]) => ({
-                code, label, subs: subs || 0, views: views || 0,
+            /* Compact per-platform roll-up. Every widget that shows per-platform
+             * numbers (Platform breakdown, Platforms live, Best platform) reads
+             * this one array and filters it by its own platform exclusions.
+             *
+             * `views` is 0 for platforms with no view counter (Itaku, Bluesky,
+             * Mastodon, Tumblr) and for the booru family, whose metric is a net
+             * score — so none of them can win "best by views". `score` is
+             * carried separately rather than being folded into views. */
+            const platRollup = window.PLATFORMS.map(p => ({
+                code: p.code,
+                label: p.label,
+                badge: p.code.toUpperCase(),
+                subs: window.platformStat(p.code, statsByCode[p.code], 'subs'),
+                views: window.platformStat(p.code, statsByCode[p.code], 'views'),
+                score: window.platformStat(p.code, statsByCode[p.code], 'score'),
+                faves: window.platformStat(p.code, statsByCode[p.code], 'faves'),
+                comments: window.platformStat(p.code, statsByCode[p.code], 'comments'),
+                // DeviantArt is the only platform reporting downloads today;
+                // reading it generically means the next one needs no change.
+                downloads: (statsByCode[p.code] || {}).total_downloads || 0,
+                // The platform's own word for its headline metric, so the card
+                // says "Hits" on AO3 and "Score" on e621 rather than "views".
+                primaryLabel: window.platformMetricLabel(
+                    p.code, p.metrics.views ? 'views' : (p.metrics.score ? 'score' : 'faves')),
+                primary: p.metrics.views
+                    ? window.platformStat(p.code, statsByCode[p.code], 'views')
+                    : (p.metrics.score
+                        ? window.platformStat(p.code, statsByCode[p.code], 'score')
+                        : window.platformStat(p.code, statsByCode[p.code], 'faves')),
+                favesLabel: window.platformMetricLabel(p.code, 'faves'),
             }));
 
-            /* Per-platform aggregate view charts — only those with history. */
-            const chartSpecs = [
-                { id: 'chart-ib-views', title: 'Inkbunny Views', snapshots: ibAgg?.snapshots, keys: ['views'] },
-                { id: 'chart-fa-views', title: 'FurAffinity Views', snapshots: faAgg?.snapshots, keys: ['views'] },
-                { id: 'chart-ws-views', title: 'Weasyl Views', snapshots: wsAgg?.snapshots, keys: ['views'] },
-                { id: 'chart-sf-views', title: 'SoFurry Views', snapshots: sfAgg?.snapshots, keys: ['views'] },
-                { id: 'chart-sqw-views', title: 'SquidgeWorld Views', snapshots: sqwAgg?.snapshots, keys: ['views'] },
-                { id: 'chart-ao3-views', title: 'AO3 Views', snapshots: ao3Agg?.snapshots, keys: ['views'] },
-                { id: 'chart-da-views', title: 'DeviantArt Views', snapshots: daAgg?.snapshots, keys: ['views'] },
-                { id: 'chart-wp-reads', title: 'Wattpad Reads', snapshots: wpAgg?.snapshots, keys: ['reads'] },
-                { id: 'chart-ik-likes', title: 'Itaku Likes', snapshots: ikAgg?.snapshots, keys: ['likes'] },
-                { id: 'chart-bsky-likes', title: 'Bluesky Likes', snapshots: bskyAgg?.snapshots, keys: ['likes'] },
-                { id: 'chart-tw-views', title: 'X/Twitter Views', snapshots: twAgg?.snapshots, keys: ['views'] },
-                { id: 'chart-mast-likes', title: 'Mastodon Likes', snapshots: mastAgg?.snapshots, keys: ['likes'] },
-                { id: 'chart-tum-notes', title: 'Tumblr Notes', snapshots: tumAgg?.snapshots, keys: ['notes'] },
-                { id: 'chart-pix-views', title: 'Pixiv Views', snapshots: pixAgg?.snapshots, keys: ['views'] },
-                { id: 'chart-thr-views', title: 'Threads Views', snapshots: thrAgg?.snapshots, keys: ['views'] },
-                { id: 'chart-ig-views', title: 'Instagram Views', snapshots: igAgg?.snapshots, keys: ['views'] },
-                { id: 'chart-e621-score', title: 'e621 Score', snapshots: e621Agg?.snapshots, keys: ['score'] },
-            ].filter(c => c.snapshots && c.snapshots.length > 0);
-            const chartsHtml = chartSpecs.length
-                ? chartSpecs.map(c => `<div class="chart-container"><h3>${c.title}</h3><div class="chart-wrap"><canvas id="${c.id}"></canvas></div></div>`).join('')
-                : '<div class="dash-empty">No view history yet — charts appear after a poll or two.</div>';
+            /* Per-platform trend charts — only those with history. Each plots
+             * that platform's primary snapshot column (`metrics.snap`) and is
+             * titled in the platform's own vocabulary, so AO3 reads "AO3 Hits"
+             * and Tumblr "Tumblr Notes" rather than everything claiming views.
+             * Built from the registry, so FurryNetwork/Furbooru chart too. */
+            const chartSpecs = window.PLATFORMS.map(p => ({
+                id: `chart-${p.code}-${p.metrics.snap}`,
+                code: p.code,
+                title: `${p.label} ${window.platformMetricLabel(p.code, p.metrics.snapKey)}`,
+                snapshots: aggByCode[p.code] && aggByCode[p.code].snapshots,
+                keys: [p.metrics.snap],
+            })).filter(c => c.snapshots && c.snapshots.length > 0);
 
             /* Resolve the server-saved widget layout (cross-device); validate
                ids/spans against the catalog and fall back to the default. */
@@ -3199,13 +3111,21 @@ const App = {
             this._dashboardLayout = layout;
             if (this._dashEdit === undefined) this._dashEdit = false;
 
-            /* Cache everything the widgets need so customise-mode edits
-               re-render instantly without re-fetching. */
+            /* Cache everything the widgets need so customise-mode edits (and
+               per-widget platform filters) re-render instantly without
+               re-fetching.
+
+               Note what is NOT pre-computed any more: totals, the platform
+               breakdown HTML and the chart HTML used to be baked once here.
+               They are now derived per widget in _dashWidgetHtml, because each
+               widget can exclude a different set of platforms — so the numbers
+               depend on which widget is asking. The unfiltered source data
+               (platRollup, charts, topViewed/topFaved, recentActivity) is
+               cached instead, unsliced. */
             this._dashCtx = {
-                totals: { subs: totalSubs, views: totalViews, faves: totalFaves, comments: totalComments, downloads: totalDownloads },
-                platformsHtml, chartsHtml, charts: chartSpecs,
+                charts: chartSpecs,
                 topViewed, topFaved,
-                recentActivity: recentActivity.slice(0, 15),
+                recentActivity,
                 topFans: (topFans.fans || []).slice(0, 10),
                 trending: (trending.trending || []),
                 systemActivity: (systemActivity.events || []).slice(0, 20),
@@ -3274,13 +3194,81 @@ const App = {
         ];
     },
 
+    /* ── Per-widget platform filter ────────────────────────────────────────
+     * Any widget with a platform dimension can be narrowed to a subset of
+     * platforms from ⚙ Customize. The choice rides on the layout entry's `cfg`
+     * (the same channel the charts widget uses for its line/bar toggle), so it
+     * saves to the server with the layout and follows the user across devices.
+     *
+     * cfg.exclude stores the codes switched OFF, never the ones switched ON.
+     * That is the whole design decision: a platform connected later shows up in
+     * every widget by default, so a board configured months ago cannot quietly
+     * under-count new work. The cost is that a widget set to "just FA and IB"
+     * will gain a third platform when one is connected — the safer failure. */
+    _widgetExclude(w) {
+        return (w && w.cfg && Array.isArray(w.cfg.exclude)) ? w.cfg.exclude : [];
+    },
+
+    /* Widgets that honour the filter. Feed-style widgets with no platform
+     * dimension (Top fans, System events, By persona, Quick actions, Pending
+     * queue, Platform health) are deliberately absent. */
+    _PLATFORM_FILTERABLE: [
+        'stat-subs', 'stat-views', 'stat-faves', 'stat-comments', 'stat-downloads',
+        'stat-platforms', 'engagement', 'milestones', 'spotlight', 'bestplatform',
+        'platforms', 'charts', 'trending', 'topviewed', 'topfaved', 'activity', 'comments',
+    ],
+
+    /* Aggregate totals over the platforms a widget still includes. Derived per
+     * widget rather than once per page, because two stat cards on the same
+     * board can be scoped to different platforms. */
+    _dashTotals(ctx, exclude) {
+        const rows = (ctx.platRollup || [])
+            .filter(p => window.isPlatformVisible(p.code, exclude));
+        const sum = key => rows.reduce((n, p) => n + (p[key] || 0), 0);
+        return {
+            subs: sum('subs'), views: sum('views'), score: sum('score'),
+            faves: sum('faves'), comments: sum('comments'), downloads: sum('downloads'),
+        };
+    },
+
+    /* "3 of 19 platforms" caption for a filtered widget, so a small number is
+     * never mistaken for a bad poll. Empty when nothing is excluded. */
+    _filterNote(ctx, exclude) {
+        if (!exclude || !exclude.length) return '';
+        const total = (ctx.platRollup || []).length;
+        return `<span class="wfilter-note" title="This widget is filtered — edit it under ⚙ Customize">`
+            + `${total - exclude.length} of ${total} platforms</span>`;
+    },
+
+    /* Per-platform mini stat card. Labels follow the platform's own vocabulary
+     * (AO3 "Hits", e621 "Score", Tumblr "Notes") instead of calling everything
+     * views — the registry carries that wording. */
+    _platformCardHtml(p) {
+        const cell = (value, label) =>
+            `<div><span style="font-size:18px;font-weight:600">${Utils.formatCompact(value || 0)}</span>`
+            + ` <span style="font-size:11px;color:var(--text-muted)">${Utils.escapeHtml(label.toLowerCase())}</span></div>`;
+        return `
+                <a href="#/${p.code}" class="stat-card" style="text-decoration:none;color:inherit;cursor:pointer;transition:box-shadow 0.2s">
+                    <div class="label"><span class="platform-badge ${p.code}">${Utils.escapeHtml(p.badge)}</span> ${Utils.escapeHtml(p.label)}</div>
+                    <div style="display:flex;gap:16px;margin-top:6px">
+                        ${cell(p.primary, p.primaryLabel)}
+                        ${cell(p.faves, p.favesLabel)}
+                        ${cell(p.subs, 'subs')}
+                    </div>
+                </a>`;
+    },
+
     _dashWidgetHtml(id, ctx, w) {
         // Stat cards deep-link into the works library (all your submissions —
         // stories + artwork). Not linked while customising the board, so drag /
         // resize keeps a plain, non-navigating cell. Nav goes through the global
         // [data-nav] click delegate.
+        const exclude = this._widgetExclude(w);
+        const vis = code => window.isPlatformVisible(code, exclude);
+        const totals = this._dashTotals(ctx, exclude);
+        const note = this._filterNote(ctx, exclude);
         const stat = (label, value, nav) => {
-            const inner = `<div class="wtitle">${label}</div><div class="w-num">${Utils.formatCompact(value || 0)}</div>`;
+            const inner = `<div class="wtitle">${label}${note}</div><div class="w-num">${Utils.formatCompact(value || 0)}</div>`;
             return (nav && !this._dashEdit)
                 ? `<a class="dash-stat-link" data-nav="${nav}" title="View your works">${inner}</a>`
                 : inner;
@@ -3288,43 +3276,56 @@ const App = {
         switch (id) {
             // Each metric card lands on the shelf sorted by THAT metric (2.147.0);
             // Submissions/Downloads have no metric sort, so they open the plain shelf.
-            case 'stat-subs': return stat('Submissions', ctx.totals.subs, '#/library');
-            case 'stat-views': return stat('Total views', ctx.totals.views, '#/library/sort/views');
-            case 'stat-faves': return stat('Favourites', ctx.totals.faves, '#/library/sort/favorites');
-            case 'stat-comments': return stat('Comments', ctx.totals.comments, '#/library/sort/comments');
-            case 'stat-downloads': return stat('Downloads', ctx.totals.downloads, '#/library');
+            case 'stat-subs': return stat('Submissions', totals.subs, '#/library');
+            case 'stat-views': return stat('Total views', totals.views, '#/library/sort/views');
+            case 'stat-faves': return stat('Favourites', totals.faves, '#/library/sort/favorites');
+            case 'stat-comments': return stat('Comments', totals.comments, '#/library/sort/comments');
+            case 'stat-downloads': return stat('Downloads', totals.downloads, '#/library');
             case 'health': return this._healthStripHtml();
-            case 'platforms': return `<div class="wtitle">Platform breakdown</div><div class="dash-platgrid">${ctx.platformsHtml}</div>`;
+            case 'platforms': {
+                const cards = (ctx.platRollup || []).filter(p => vis(p.code))
+                    .map(p => this._platformCardHtml(p)).join('');
+                return `<div class="wtitle">Platform breakdown${note}</div>`
+                    + `<div class="dash-platgrid">${cards || '<div class="dash-empty">No platforms selected.</div>'}</div>`;
+            }
             case 'charts': {
                 const ct = (w && w.cfg && w.cfg.chartType === 'bar') ? 'bar' : 'line';
                 const toggle = `<span class="wb-charttype" role="group" aria-label="Chart type">`
                     + `<button type="button" class="wb-ct${ct === 'line' ? ' is-active' : ''}" data-chart-type="line">Line</button>`
                     + `<button type="button" class="wb-ct${ct === 'bar' ? ' is-active' : ''}" data-chart-type="bar">Bar</button></span>`;
-                return `<div class="wtitle">Views over time${toggle}</div>${ctx.chartsHtml}`;
+                const specs = (ctx.charts || []).filter(c => vis(c.code));
+                const html = specs.length
+                    ? specs.map(c => `<div class="chart-container"><h3>${Utils.escapeHtml(c.title)}</h3><div class="chart-wrap"><canvas id="${c.id}"></canvas></div></div>`).join('')
+                    : '<div class="dash-empty">No view history yet — charts appear after a poll or two.</div>';
+                return `<div class="wtitle">Views over time${note}${toggle}</div>${html}`;
             }
-            case 'trending': return `<div class="wtitle">Trending now</div>${ctx.trending.length ? `<div class="stats-grid" style="margin:0">${Components.trendingCards(ctx.trending)}</div>` : '<div class="dash-empty">Nothing trending right now.</div>'}`;
-            case 'topviewed': return `<div class="wtitle">Top viewed</div>${Components.overviewTopList(ctx.topViewed, 'views')}`;
-            case 'topfaved': return `<div class="wtitle">Top faved</div>${Components.overviewTopList(ctx.topFaved, 'favorites_count')}`;
-            case 'activity': return `<div class="wtitle">Recent activity</div>${Components.overviewRecentActivity(ctx.recentActivity)}`;
+            case 'trending': {
+                const items = (ctx.trending || []).filter(t => vis(t.platform));
+                return `<div class="wtitle">Trending now${note}</div>${items.length ? `<div class="stats-grid" style="margin:0">${Components.trendingCards(items)}</div>` : '<div class="dash-empty">Nothing trending right now.</div>'}`;
+            }
+            case 'topviewed': return `<div class="wtitle">Top viewed${note}</div>${Components.overviewTopList((ctx.topViewed || []).filter(i => vis(i._platform)).slice(0, 10), 'views')}`;
+            case 'topfaved': return `<div class="wtitle">Top faved${note}</div>${Components.overviewTopList((ctx.topFaved || []).filter(i => vis(i._platform)).slice(0, 10), 'favorites_count')}`;
+            case 'activity': return `<div class="wtitle">Recent activity${note}</div>${Components.overviewRecentActivity((ctx.recentActivity || []).filter(a => vis(a._platform)).slice(0, 15))}`;
             case 'topfans': return `<div class="wtitle">Top fans</div>${Components.topFansTable(ctx.topFans)}`;
             case 'events': return `<div class="wtitle">System events</div>${Components.systemEventsFeed(ctx.systemActivity)}`;
             case 'personas': return `<div class="wtitle">By persona <span class="muted" style="font-weight:400;font-size:.8rem">— your accounts, pooled by identity</span></div>${this._personasWidgetHtml(ctx.personas)}`;
             case 'quicklinks': return `<div class="wtitle">Quick actions</div>${this._quickLinksHtml()}`;
-            case 'engagement': return this._engagementHtml(ctx.totals);
-            case 'milestones': return `<div class="wtitle">Milestones</div>${this._milestonesHtml(ctx.totals)}`;
-            case 'spotlight': return `<div class="wtitle">Spotlight</div>${this._spotlightHtml(ctx.topViewed)}`;
+            case 'engagement': return this._engagementHtml(totals, note);
+            case 'milestones': return `<div class="wtitle">Milestones${note}</div>${this._milestonesHtml(totals)}`;
+            case 'spotlight': return `<div class="wtitle">Spotlight${note}</div>${this._spotlightHtml((ctx.topViewed || []).filter(i => vis(i._platform)))}`;
             case 'stat-platforms': {
-                const live = (ctx.platRollup || []).filter(p => p.subs > 0);
-                const total = (ctx.platRollup || []).length;
-                return `<div class="wtitle">Platforms live</div>`
+                const shown = (ctx.platRollup || []).filter(p => vis(p.code));
+                const live = shown.filter(p => p.subs > 0);
+                return `<div class="wtitle">Platforms live${note}</div>`
                     + `<a class="dash-stat-link" data-nav="#/platforms" title="Open the Platforms hub">`
-                    + `<div class="w-num">${live.length}<span style="font-size:.45em;color:var(--text-muted)"> / ${total}</span></div>`
+                    + `<div class="w-num">${live.length}<span style="font-size:.45em;color:var(--text-muted)"> / ${shown.length}</span></div>`
                     + `<div class="dash-sub">${live.length ? live.slice(0, 6).map(p => Utils.escapeHtml(p.label)).join(' · ') : 'Nothing posted yet'}</div></a>`;
             }
-            case 'bestplatform': return this._bestPlatformHtml(ctx.platRollup);
+            case 'bestplatform': return this._bestPlatformHtml((ctx.platRollup || []).filter(p => vis(p.code)), note);
             case 'comments': {
-                const only = (ctx.recentActivity || []).filter(a => a._type === 'comment');
-                return `<div class="wtitle">Recent comments</div>`
+                const only = (ctx.recentActivity || [])
+                    .filter(a => a._type === 'comment' && vis(a._platform)).slice(0, 15);
+                return `<div class="wtitle">Recent comments${note}</div>`
                     + (only.length ? Components.overviewRecentActivity(only)
                         : '<div class="dash-empty">No comments yet — they’ll show here as they land.</div>');
             }
@@ -3377,12 +3378,12 @@ const App = {
 
     /* "Engagement rate" widget — interactions (faves + comments) per view, plus
      * average views per work. Both derived from the cached totals, no fetch. */
-    _engagementHtml(t) {
+    _engagementHtml(t, note) {
         const views = t.views || 0;
         const interactions = (t.faves || 0) + (t.comments || 0);
         const rate = views ? (interactions / views * 100) : 0;
         const avg = t.subs ? Math.round(views / t.subs) : 0;
-        return `<div class="wtitle">Engagement rate</div>`
+        return `<div class="wtitle">Engagement rate${note || ''}</div>`
             + `<div class="w-num">${rate.toFixed(1)}<span style="font-size:.5em">%</span></div>`
             + `<div class="dash-sub">${Utils.formatCompact(avg)} avg views/work · ${Utils.formatCompact(interactions)} interactions</div>`;
     },
@@ -3432,14 +3433,14 @@ const App = {
 
     /* "Best platform" — where your work actually gets seen. Ranks by views, so
      * engagement-only platforms (no view counts) never spuriously win. */
-    _bestPlatformHtml(rollup) {
+    _bestPlatformHtml(rollup, note) {
         const ranked = (rollup || []).filter(p => p.views > 0).sort((a, b) => b.views - a.views);
-        if (!ranked.length) return '<div class="wtitle">Best platform</div>'
+        if (!ranked.length) return `<div class="wtitle">Best platform${note || ''}</div>`
             + '<div class="dash-empty">No view data yet — it appears after a poll or two.</div>';
         const top = ranked[0];
         const P = (window.PLATFORMS || []).find(p => p.code === top.code);
         const runner = ranked[1];
-        return `<div class="wtitle">Best platform</div>`
+        return `<div class="wtitle">Best platform${note || ''}</div>`
             + `<a class="dash-stat-link" data-nav="#/${top.code}" title="Open ${Utils.escapeHtml(top.label)}">`
             + `<div class="dash-spot-title">${P && P.emoji ? P.emoji + ' ' : ''}${Utils.escapeHtml(top.label)}</div>`
             + `<div class="dash-spot-stats"><span><b>${Utils.formatCompact(top.views)}</b> views</span>`
@@ -3469,7 +3470,10 @@ const App = {
     _dashWidgetMount(id, ctx, w) {
         if (id === 'charts') {
             const type = (w && w.cfg && w.cfg.chartType === 'bar') ? 'bar' : 'line';
-            ctx.charts.forEach(c => {
+            // Mount only the charts this widget actually rendered — the
+            // excluded ones have no canvas in the DOM.
+            const exclude = this._widgetExclude(w);
+            ctx.charts.filter(c => window.isPlatformVisible(c.code, exclude)).forEach(c => {
                 try { Charts.aggregateLine(c.id, c.snapshots, c.keys, type); } catch (e) { /* canvas may be absent */ }
             });
         } else if (id === 'health') {
@@ -3628,11 +3632,20 @@ const App = {
 
         const tools = `<div class="dash-tools">${Components.dateRangeBar(this._dateRange)}`
             + `<button class="btn ${edit ? 'btn-primary' : 'btn-secondary'}" id="dash-customize">${edit ? '✓ Done' : '⚙ Customize'}</button></div>`;
-        const hint = edit ? '<div class="dash-edit-hint">Drag to reorder · ⤢ resize · × remove · or add a widget below.</div>' : '';
+        const hint = edit ? '<div class="dash-edit-hint">Drag to reorder · ⤢ resize · \u{1F43E} platforms · × remove · or add a widget below.</div>' : '';
 
         const cells = layout.map(w => {
+            // The platform button only appears on widgets that actually have a
+            // platform dimension (see _PLATFORM_FILTERABLE) — offering it on
+            // "Top fans" or "Quick actions" would imply a filter that does
+            // nothing.
+            const canFilter = this._PLATFORM_FILTERABLE.indexOf(w.id) !== -1;
+            const filtered = this._widgetExclude(w).length > 0;
             const ctl = edit
-                ? `<div class="dash-wctl"><button class="dash-wsize" data-wsz="${w.id}" title="Resize">⤢</button><button class="dash-wrm" data-wrm="${w.id}" title="Remove">×</button></div>`
+                ? `<div class="dash-wctl">`
+                    + (canFilter ? `<button class="dash-wplat${filtered ? ' is-filtered' : ''}" data-wplat="${w.id}" title="Choose platforms">\u{1F43E}</button>` : '')
+                    + `<button class="dash-wsize" data-wsz="${w.id}" title="Resize">⤢</button>`
+                    + `<button class="dash-wrm" data-wrm="${w.id}" title="Remove">×</button></div>`
                 : '';
             return `<div class="dash-w" data-span="${w.span}" data-wid="${w.id}"${edit ? ' draggable="true"' : ''}>${ctl}${this._dashWidgetHtml(w.id, ctx, w)}</div>`;
         }).join('');
@@ -3675,6 +3688,10 @@ const App = {
             const w = this._dashboardLayout.find(x => x.id === id);
             const m = metaById[id];
             if (w && m) { w.span = m.spans[(m.spans.indexOf(w.span) + 1) % m.spans.length]; this._saveDashLayout(); this._renderDashboard(); }
+        }));
+        document.querySelectorAll('[data-wplat]').forEach(b => b.addEventListener('click', (e) => {
+            e.stopPropagation();
+            this._openPlatformPicker(b.getAttribute('data-wplat'));
         }));
         this._wireDashDrag();
         this._bindDateRange(() => this.renderOverview());
@@ -3738,6 +3755,81 @@ const App = {
             ov.classList.remove('open');
             this._renderDashboard();
         }));
+    },
+
+    /* _openPlatformPicker(widgetId) — choose which platforms one widget counts.
+     *
+     * Reuses the widget-catalog overlay. Checked = included; the layout stores
+     * the UNCHECKED codes in cfg.exclude, so a platform added to PawPoller
+     * later is automatically counted by every existing widget (see
+     * _widgetExclude). Clearing every box would leave a widget showing nothing,
+     * so "None" is deliberately not offered — "All" resets instead.
+     *
+     * Platforms with no data yet still appear: filtering is about what you want
+     * counted, not about what happens to have been polled. */
+    _openPlatformPicker(widgetId) {
+        const w = (this._dashboardLayout || []).find(x => x.id === widgetId);
+        if (!w) return;
+        const meta = this._dashWidgetMeta().find(m => m.id === widgetId);
+        const exclude = new Set(this._widgetExclude(w));
+        const rollup = {};
+        ((this._dashCtx && this._dashCtx.platRollup) || []).forEach(p => { rollup[p.code] = p; });
+
+        const rows = window.PLATFORMS.map(p => {
+            const on = !exclude.has(p.code);
+            const r = rollup[p.code] || {};
+            // The sub-count is the useful hint here — it tells you at a glance
+            // which platforms would actually change the number.
+            const sub = r.subs ? `${Utils.formatCompact(r.subs)} works` : 'nothing polled yet';
+            return `<label class="dash-platpick${on ? ' on' : ''}">`
+                + `<input type="checkbox" data-plat="${p.code}"${on ? ' checked' : ''}>`
+                + `<span class="dash-platpick-em">${p.emoji || ''}</span>`
+                + `<span class="dash-platpick-meta"><b>${Utils.escapeHtml(p.label)}</b>`
+                + `<span>${Utils.escapeHtml(sub)}</span></span></label>`;
+        }).join('');
+
+        let ov = document.getElementById('dash-catalog');
+        if (!ov) {
+            ov = document.createElement('div');
+            ov.id = 'dash-catalog';
+            ov.className = 'dash-catalog-ov';
+            document.body.appendChild(ov);
+        }
+        ov.innerHTML = `<div class="dash-catalog"><h3>Platforms in “${Utils.escapeHtml(meta ? meta.title : widgetId)}”</h3>`
+            + `<p>Only the ticked platforms count towards this widget. Newly connected platforms are included automatically.</p>`
+            + `<div class="dash-platpick-tools"><button class="btn btn-secondary" id="platpick-all">Select all</button>`
+            + `<button class="btn btn-secondary" id="platpick-invert">Invert</button></div>`
+            + `<div class="dash-platpicks">${rows}</div>`
+            + `<div class="dash-platpick-foot"><button class="btn btn-primary" id="platpick-done">Done</button></div></div>`;
+        ov.classList.add('open');
+
+        const apply = () => {
+            const off = [];
+            ov.querySelectorAll('[data-plat]').forEach(cb => {
+                if (!cb.checked) off.push(cb.getAttribute('data-plat'));
+                cb.closest('.dash-platpick')?.classList.toggle('on', cb.checked);
+            });
+            // Every box unticked means "show nothing", which is never what the
+            // user wants from a stat card — treat it as no filter at all.
+            const cfg = Object.assign({}, w.cfg);
+            if (off.length && off.length < window.PLATFORMS.length) cfg.exclude = off;
+            else delete cfg.exclude;
+            w.cfg = Object.keys(cfg).length ? cfg : undefined;
+            this._saveDashLayout();
+        };
+
+        ov.querySelectorAll('[data-plat]').forEach(cb => cb.addEventListener('change', apply));
+        ov.querySelector('#platpick-all')?.addEventListener('click', () => {
+            ov.querySelectorAll('[data-plat]').forEach(cb => { cb.checked = true; });
+            apply();
+        });
+        ov.querySelector('#platpick-invert')?.addEventListener('click', () => {
+            ov.querySelectorAll('[data-plat]').forEach(cb => { cb.checked = !cb.checked; });
+            apply();
+        });
+        const close = () => { ov.classList.remove('open'); this._renderDashboard(); };
+        ov.querySelector('#platpick-done')?.addEventListener('click', close);
+        ov.onclick = (e) => { if (e.target === ov) close(); };
     },
 
     /* ── Dashboard Overview ────────────────────────────────────

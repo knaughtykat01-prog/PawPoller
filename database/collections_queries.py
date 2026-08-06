@@ -4,44 +4,23 @@ tags and the persona(s) spanned. See docs/specs/collections.md.
 
 The per-platform stat-column normalisation mirrors
 analytics_queries.get_link_combined_stats (the unify-master pooling), so a
-Collection and a Master pool stats the same way.
+Collection and a Master pool stats the same way — both now read the same
+registry rather than each carrying a copy.
 """
 from __future__ import annotations
 
 import json
 import sqlite3
 
+from database import platform_metrics
 from database import posting_queries
 
-# platform code -> its submissions table
-_TABLE_MAP = {
-    "ib": "submissions", "fa": "fa_submissions", "ws": "ws_submissions",
-    "sf": "sf_submissions", "sqw": "sqw_submissions", "ao3": "ao3_submissions",
-    "da": "da_submissions", "wp": "wp_submissions", "ik": "ik_submissions",
-    "bsky": "bsky_submissions", "tw": "tw_submissions", "mast": "mast_submissions",
-    "tum": "tum_submissions", "pix": "pix_submissions", "thr": "thr_submissions",
-    "ig": "ig_submissions", "e621": "e621_submissions",
-}
-# platform code -> (views_col, favourites_col, comments_col); None = not tracked
-_METRICS = {
-    "ib": ("views", "favorites_count", "comments_count"),
-    "fa": ("views", "favorites_count", "comments_count"),
-    "ws": ("views", "favorites_count", "comments_count"),
-    "sf": ("views", "favorites_count", "comments_count"),
-    "sqw": ("views", "favorites_count", "comments_count"),
-    "ao3": ("views", "favorites_count", "comments_count"),
-    "da": ("views", "favorites_count", "comments_count"),
-    "wp": ("reads", "votes", "comments_count"),
-    "ik": (None, "likes", "comments_count"),
-    "bsky": (None, "likes", "replies"),
-    "tw": ("views", "likes", "replies"),
-    "mast": (None, "likes", "replies"),
-    "tum": (None, "notes", None),
-    "pix": ("views", "favorites_count", "comments_count"),
-    "thr": ("views", "likes", "replies"),
-    "ig": ("views", "likes", "comments"),
-    "e621": ("score", "favorites_count", "comments_count"),
-}
+# Platform table + metric columns come from the canonical registry
+# (database/platform_metrics.py). The local copies this replaces were missing
+# FurryNetwork and Furbooru entirely, and mapped e621's `score` into the VIEWS
+# slot — summing a net up−down total (which can be negative) as page views.
+_TABLE_MAP = {code: platform_metrics.table_for(code)
+              for code in platform_metrics.ALL_CODES}
 
 
 # ── CRUD ─────────────────────────────────────────────────────────
@@ -141,11 +120,22 @@ def _submission_row(conn: sqlite3.Connection, platform: str, sid: str) -> dict |
 
 
 def _stats_from_row(platform: str, row: dict) -> dict:
-    v, f, c = _METRICS.get(platform, ("views", "favorites_count", "comments_count"))
+    """Canonical {views, favorites, comments, score} for one submission row.
+
+    None (not 0) means "this platform doesn't report that metric" — Itaku and
+    Mastodon have no view count, e621 has a score instead. Keeping them apart
+    stops a pooled total implying a platform scored zero when it simply doesn't
+    measure that thing.
+    """
+    spec = platform_metrics.get(platform)
+    if not spec:
+        return {"views": None, "favorites": None, "comments": None, "score": None}
+    v, f, c = spec.views, spec.faves, spec.comments
     return {
         "views": (row.get(v, 0) or 0) if v else None,
         "favorites": (row.get(f, 0) or 0) if f else None,
         "comments": (row.get(c, 0) or 0) if c else None,
+        "score": (row.get(spec.score, 0) or 0) if spec.score else None,
     }
 
 

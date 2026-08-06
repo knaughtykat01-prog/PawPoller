@@ -12,6 +12,90 @@ popup, which is usually the wrong thing to show — so write the blockquote.
 
 ---
 
+## [3.1.0] - 2026-08-06 - One platform registry: AO3/e621/Twitter stats stop vanishing, and Overview widgets get a platform filter
+
+> **Your numbers were too low, and now they're right.** Several platforms' stats were never making it into the Library,
+> the per-account totals or the per-work pages — AO3 and SquidgeWorld showed nothing at all, and e621, Twitter,
+> DeviantArt, Itaku, Bluesky, Instagram, Mastodon, Tumblr and Pixiv were skipped entirely. **Expect totals to jump: this
+> is the fix working, not a glitch.** On the data here that's about 4,500 AO3 views, 4,000 Twitter views and 330 e621
+> favourites that were simply missing. Two more things came with it. **e621 and Furbooru report a score, not views**, so
+> their score is now counted separately instead of being added to your view count (it can go negative). And **FurryNetwork
+> and Furbooru now appear on the Overview** — they'd never been added to it.
+>
+> **New: pick which platforms each Overview widget counts.** Open **⚙ Customize** and hit the 🐾 button on any widget to
+> tick the platforms it should include — so you can have one views card for your art sites and another for your fiction
+> sites, side by side. Filtered widgets show a small "3 of 19 platforms" tag so a low number is never mistaken for a bad
+> poll. Platforms you connect later are included automatically.
+
+The root cause was one piece of knowledge — *which table holds platform X's stats and what are its metric columns
+called* — being hand-copied into **fifteen** places that had drifted apart. New module `database/platform_metrics.py`
+is now the single source of truth; `frontend/js/platforms.js` (already the canonical platform list since the reskin)
+gains the matching metric metadata.
+
+**The AO3/SquidgeWorld incident.** `posting_queries.get_publications_with_stats`'s local `stat_tables` asked those two
+platforms for `hits` and `kudos`. Those columns have never existed — the OTW archives store plain
+`views`/`favorites_count`/`bookmarks_count`; only the *site vocabulary* is different. The query raised
+`no such column: hits`, a bare `except Exception: continue` swallowed it, and all 13 AO3 + SqW publications returned
+`stats=None` forever. The identical bug sat in `routes/posting_api.py`'s `_SNAP_TABLES` (`"sqw"…"hits"`), so the
+per-publication sparklines on those platforms were always empty too. Only 64 of 118 posted publications were getting
+stats at all; the same map covered 7 of 19 platforms, so e621/tw/da/ik/bsky/ig/mast/thr/tum/pix/fn/fbr were never even
+looked up.
+
+**Metric families.** Each registry entry declares a family: `views` (a real view/read counter), `score` (net up−down,
+may be NEGATIVE — e621, Furbooru), `engagement` (likes/notes only — Itaku, Bluesky, Mastodon, Tumblr). Score platforms
+declare `views=None`, which is what structurally prevents the old conflation: `analytics_queries` (×2),
+`group_queries` and `collections_queries` all mapped e621's `score` into their views slot, so a linked set or
+collection containing a booru post counted net upvotes as page views. `platform_metrics.pooled()` now keeps the
+families apart, and `total_score` is returned alongside `total_views` by the link/group/tag roll-ups.
+(The Overview's own "Total views" card was never affected — `app.js` summed per-platform and skipped e621.)
+
+**`database/accounts.py::account_stats` was sniffing for `views`/`favorites_count`/`comments_count` and writing 0 for
+anything else** — so every Twitter, e621, Itaku, Bluesky, Mastodon and Tumblr account reported **zero favourites**
+(their columns are `likes`/`notes`), and `personas.persona_stats` under-counted to match, which is what the "By persona"
+widget shows. Both now resolve columns through the registry and carry `score` as its own key.
+
+**Call sites migrated** (all now registry-driven): `database/posting_queries.py` · `database/accounts.py` ·
+`database/personas.py` · `database/analytics_queries.py` (spike-detection columns, `get_link_combined_stats`,
+`get_combined_snapshots`) · `database/collections_queries.py` · `database/group_queries.py` ·
+`routes/submissions_api.py` · `routes/api.py` (tag stats) · `routes/posting_api.py` (sparklines) ·
+`polling/telegram.py` (`PLATFORM_METRICS`, `PLATFORM_TABLES`, goal table map — both dicts had silently missed
+Instagram). Every swallowed `except Exception: continue` around a stat query is now a logged WARNING: a
+registry/schema mismatch is a bug, not a normal condition.
+
+**Frontend.** `app.js`'s Overview carried four more hand-written copies of the same knowledge — a 34-promise
+destructured fetch, the totals sum, the platform breakdown grid, the per-platform roll-up and the chart list — which is
+why FurryNetwork and Furbooru (2.200/2.201) appeared on the Overview *nowhere*. All are now loops over
+`window.PLATFORMS`, driven by new helpers `platformStat()`, `platformMetricLabel()`, `visiblePlatforms()` and
+`isPlatformVisible()`. Charts and platform cards are now titled in each platform's own words, so AO3 reads
+**"AO3 Hits"** and Tumblr **"Tumblr Notes"** instead of everything claiming views.
+
+**Per-widget platform filter.** Rides on the existing widget `cfg` channel (the same one the charts widget uses for
+line/bar), so it saves with the layout and follows you across devices. `cfg.exclude` stores the codes switched **off**,
+never the ones switched on — deliberate, so a platform connected later is counted by every existing widget instead of
+being silently omitted from a board configured months ago. Honoured by every widget with a platform dimension (stat
+cards, engagement, milestones, spotlight, best platform, platforms live, breakdown, charts, trending, top viewed/faved,
+recent activity, recent comments); feed-style widgets without one (Top fans, System events, By persona, Quick actions,
+Pending queue, Platform health) don't offer the control. Totals are derived per widget rather than once per page, since
+two cards on the same board can be scoped differently. New `_openPlatformPicker`, `_widgetExclude`, `_dashTotals`,
+`_filterNote`, `_platformCardHtml`.
+
+**Analytics export** (`/api/works/export.csv`) leads with the four canonical metrics — a Wattpad row's reads and an AO3
+row's hits both land in `views`, and the booru score lands in `score` instead of being dropped — then one column per
+platform-specific extra, generated from the registry so a new platform's metrics appear without touching the file.
+
+**Tests.** New `tests/test_platform_metrics.py` (28) is the actual guard, because a registry deduplicates a *wrong*
+column name just as happily as a right one: it PRAGMA-checks **every column every entry declares** against a freshly
+built schema (submissions *and* snapshots tables), and asserts the JS and Python registries list the same platforms.
+`tests/test_works.py`'s fixture was itself asserting the false belief (an AO3 publication arriving with `reads`/`kudos`
+keys) and has been corrected, plus new coverage for score-vs-views pooling and the engagement-platform favourites that
+were being dropped.
+
+**Follow-up, not done here:** e621/Furbooru milestone alerts still measure score against the *view* thresholds and say
+"views" (unchanged behaviour — deliberately not altered so the alerts don't silently stop). Giving score its own
+thresholds and wording is a separate change.
+
+---
+
 ## [3.0.1] - 2026-07-31 - Fixes: in-app updater on Windows + the desktop↔server sync buttons
 
 > **3.0.1 patches two things.** (1) The in-app **Update** button now closes the app itself so the new version can install

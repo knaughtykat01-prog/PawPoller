@@ -39,7 +39,7 @@ from database import (
     queries, fa_queries, ws_queries, sf_queries, sqw_queries, ao3_queries,
     da_queries, wp_queries, ik_queries, bsky_queries, tw_queries, mast_queries, tum_queries, pix_queries, thr_queries, ig_queries,
     e621_queries,
-    group_queries, analytics_queries,
+    group_queries, analytics_queries, platform_metrics,
 )
 from polling.poller import run_poll_cycle, poll_progress
 from polling.background import spawn
@@ -1397,9 +1397,11 @@ def save_preferences(body: dict):
             update[key] = bool(body[key])
 
     # ── Configurable Home dashboard layout (redesign) ──────────
-    # Free-form JSON list of {id, span} widget descriptors. Stored
+    # Free-form JSON list of {id, span, cfg} widget descriptors. Stored
     # verbatim so the Home dashboard layout follows the user across
-    # devices (desktop + phone share one settings store).
+    # devices (desktop + phone share one settings store). `cfg` carries
+    # per-widget options — the charts widget's line/bar choice and each
+    # widget's `exclude` list of platform codes it should NOT count.
     if "dashboard_layout" in body:
         update["dashboard_layout"] = body["dashboard_layout"]
 
@@ -2317,50 +2319,35 @@ def get_tag_stats(tag_id: int):
     conn = get_connection()
     try:
         members = conn.execute("SELECT platform, submission_id FROM submission_tags WHERE tag_id = ?", (tag_id,)).fetchall()
-        table_map = {"ib": "submissions", "fa": "fa_submissions", "ws": "ws_submissions", "sf": "sf_submissions", "sqw": "sqw_submissions", "ao3": "ao3_submissions", "da": "da_submissions", "wp": "wp_submissions", "ik": "ik_submissions", "bsky": "bsky_submissions", "tw": "tw_submissions", "mast": "mast_submissions", "tum": "tum_submissions", "pix": "pix_submissions", "thr": "thr_submissions", "ig": "ig_submissions", "e621": "e621_submissions"}
-        # Platform-specific column mappings for stats aggregation
-        _metrics = {
-            "ib": ("views", "favorites_count", "comments_count"),
-            "fa": ("views", "favorites_count", "comments_count"),
-            "ws": ("views", "favorites_count", "comments_count"),
-            "sf": ("views", "favorites_count", "comments_count"),
-            "sqw": ("views", "favorites_count", "comments_count"),
-            "ao3": ("views", "favorites_count", "comments_count"),
-            "da": ("views", "favorites_count", "comments_count"),
-            "wp": ("reads", "votes", "comments_count"),
-            "ik": (None, "likes", "comments_count"),
-            "bsky": (None, "likes", "replies"),
-            "tw": ("views", "likes", "replies"),
-            "mast": (None, "likes", "replies"),
-            "tum": (None, "notes", None),
-            "pix": ("views", "favorites_count", "comments_count"),
-            "thr": ("views", "likes", "replies"),
-            "ig": ("views", "likes", "comments"),
-            "e621": ("score", "favorites_count", "comments_count"),
-        }
-        total_views = total_faves = total_comments = 0
+        # Table + metric columns from the canonical registry
+        # (database/platform_metrics.py) — the local copy this replaces was
+        # missing FurryNetwork/Furbooru and summed e621's net score as views.
+        total_views = total_score = total_faves = total_comments = 0
         subs = []
         for m in members:
             plat = m["platform"]
-            table = table_map.get(plat)
-            if not table:
+            spec = platform_metrics.get(plat)
+            if not spec:
                 continue
             try:
                 row = conn.execute(
-                    f"SELECT * FROM {table} WHERE submission_id = ?",
+                    f"SELECT * FROM {spec.table} WHERE submission_id = ?",
                     (m["submission_id"],),
                 ).fetchone()
-            except Exception:
+            except sqlite3.Error as e:
+                logger.warning("tag stats: %s unavailable (%s): %s", plat, spec.table, e)
                 continue
             if row:
                 d = dict(row)
                 d["platform"] = plat
-                v_col, f_col, c_col = _metrics.get(plat, ("views", "favorites_count", "comments_count"))
-                total_views += d.get(v_col, 0) or 0 if v_col else 0
-                total_faves += d.get(f_col, 0) or 0 if f_col else 0
-                total_comments += d.get(c_col, 0) or 0 if c_col else 0
+                total_views += (d.get(spec.views, 0) or 0) if spec.views else 0
+                total_score += (d.get(spec.score, 0) or 0) if spec.score else 0
+                total_faves += (d.get(spec.faves, 0) or 0) if spec.faves else 0
+                total_comments += (d.get(spec.comments, 0) or 0) if spec.comments else 0
                 subs.append(d)
-        return {"total_views": total_views, "total_favorites": total_faves, "total_comments": total_comments, "submissions": subs}
+        return {"total_views": total_views, "total_score": total_score,
+                "total_favorites": total_faves, "total_comments": total_comments,
+                "submissions": subs}
     finally:
         conn.close()
 

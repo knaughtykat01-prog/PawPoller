@@ -1526,6 +1526,60 @@ Four pollers switched from per-item INSERT loops to `executemany` + `INSERT OR I
 
 ## 6. Database Layer
 
+### `database/platform_metrics.py` — the canonical metric registry (3.1.0)
+
+**Read this before touching any per-platform stat query.** One module answers "which table holds platform X's stats,
+and what are its metric columns actually called". Every stat lookup in the app defers to it.
+
+It exists because that knowledge used to be hand-declared in **fifteen** places — `analytics_queries` ×3,
+`collections_queries`, `group_queries`, `posting_queries`, `routes/api`, `routes/posting_api`, `polling/telegram` ×2,
+`posting/sync`, `database/accounts`, `cli`, plus four more blocks in `app.js` — and they had drifted apart. The
+resulting incidents:
+
+* **AO3/SquidgeWorld reported no stats at all.** `posting_queries.stat_tables` asked them for `hits`/`kudos`. Those
+  columns have never existed: the OTW archives store plain `views`/`favorites_count`/`bookmarks_count`, and only the
+  *site vocabulary* differs. `no such column: hits` was swallowed by `except Exception: continue`. The same wrong
+  entry sat in `routes/posting_api.py::_SNAP_TABLES`, so those sparklines were empty too.
+* **12 of 19 platforms were never looked up** by the Library's stat enrichment — 64 of 118 posted publications had
+  stats.
+* **Score summed as views.** The link/collection/group roll-ups mapped e621's `score` into their views slot, counting
+  net upvotes as page views — and a booru score can be negative.
+* **`accounts.account_stats` sniffed for `favorites_count` only**, so Twitter/e621/Itaku/Bluesky/Mastodon/Tumblr
+  accounts reported zero favourites (their columns are `likes`/`notes`/`score`) and `personas.persona_stats`
+  under-counted with them.
+
+**Two rules.**
+
+1. **Declare the column names the SCHEMA uses, never the ones the site's UI uses.** AO3 says hits and kudos; the table
+   says views and favorites_count. Site vocabulary goes in `labels`, which is display-only and never reaches SQL.
+2. **`tests/test_platform_metrics.py` is the guard, not the registry.** A registry deduplicates a *wrong* column name
+   just as happily as a right one. The test PRAGMA-checks every declared column against a freshly built schema (both
+   the submissions and snapshots tables) and asserts `frontend/js/platforms.js` lists the same codes.
+
+**Metric families** — each entry declares one, and aggregates use it to decide what may legitimately be summed:
+
+| family | meaning | platforms |
+|---|---|---|
+| `views` | a real view/read counter | ib, fa, ws, sf, sqw, ao3, da, wp, tw, pix, thr, ig, fn |
+| `score` | net up−down, **may be negative**; `views` is None on purpose | e621, fbr |
+| `engagement` | no view counter at all; likes/notes only | ik, bsky, mast, tum |
+
+**API.** `get(code)` → `PlatformMetrics` · `table_for` / `snapshots_for` / `columns_for` / `metric_triple` ·
+`read_stats(conn, code, ids)` for batched lookups (chunked under SQLite's variable cap; a missing table/column is
+logged at WARNING and returns empty — never silently) · `pooled(entries)` to sum `(code, stats)` pairs while keeping
+the families apart. Consumers should read the **canonical keys** `views` / `score` / `faves` / `comments`;
+`read_stats` also carries the raw column names through for back-compat.
+
+**Frontend twin.** `frontend/js/platforms.js` was already the canonical platform *list*; it now also carries
+`metrics` per platform — the `total_*` field each metric arrives under in `/api/{code}/summary`, the snapshot column
+the trend charts plot, the family, and the display labels. Helpers `window.platformStat(code, stats, key)`,
+`platformMetricLabel(code, key)`, `visiblePlatforms(exclude)` and `isPlatformVisible(code, exclude)` replaced four
+hand-written blocks in `app.js` (see §18 for the Overview widget filter that builds on them).
+
+**Adding a platform:** add the entry here and in `platforms.js`, and the Library stats, analytics roll-ups, per-account
+stats, digests, spike detection, CSV export, Overview totals, breakdown grid, trend chart and widget filter all pick it
+up. Run `pytest tests/test_platform_metrics.py` — it fails if a column name is wrong or the two registries disagree.
+
 ### Connection Configuration
 
 SQLite with per-connection PRAGMAs set in `database/db.py:get_connection()`:
@@ -5863,6 +5917,47 @@ missing again.
 - Throttle banners for non-AO3 platforms — only AO3 and Bsky surface
   enough throttle metadata to be worth showing. Other platforms fall
   through to the generic error banner.
+
+### 18.9 Per-widget platform filter (Overview, 3.1.0)
+
+Any Overview widget with a platform dimension can be scoped to a subset of
+platforms: **⚙ Customize → 🐾** on the widget.
+
+**Storage.** The choice rides on the layout entry's `cfg` — the same channel the
+charts widget uses for its line/bar toggle — so it saves via the
+`dashboard_layout` preference and follows the user across devices.
+`routes/api.py` stores the layout verbatim, so no backend change was needed
+beyond documenting the field.
+
+**`cfg.exclude` stores what is switched OFF, never what is switched on.** This
+is the one real design decision. Storing exclusions means a platform connected
+*later* is counted by every existing widget automatically, so a board configured
+months ago cannot quietly under-count new work. The trade is that a widget set to
+"just FA and IB" gains a third platform when one is connected — chosen as the
+safer failure, since a silently-low number is worse than a surprising one.
+Unticking everything is treated as no filter at all (a widget showing nothing is
+never the intent).
+
+**Where it applies.** `App._PLATFORM_FILTERABLE` is the list. Widgets with no
+platform dimension (Top fans, System events, By persona, Quick actions, Pending
+queue, Platform health) deliberately don't render the control — offering a filter
+that does nothing is worse than not offering one.
+
+**Totals are derived per widget, not per page.** `renderOverview` used to bake
+`totalViews`/`platformsHtml`/`chartsHtml` once and cache them; it now caches the
+*unfiltered* source (`platRollup`, `charts`, `topViewed`, `topFaved`,
+`recentActivity` — all unsliced) and each widget derives its own numbers through
+`_dashTotals(ctx, exclude)`. Two stat cards on the same board can be scoped to
+different platforms, so a single pre-computed total is no longer meaningful. The
+lists are cached unsliced because a widget filtered to two platforms still needs
+ten rows to show after filtering.
+
+**Helpers:** `_widgetExclude(w)` · `_dashTotals(ctx, exclude)` ·
+`_filterNote(ctx, exclude)` (the "3 of 19 platforms" tag, so a small number is
+never mistaken for a failed poll) · `_platformCardHtml(p)` ·
+`_openPlatformPicker(widgetId)` (reuses the widget-catalog overlay). All platform
+resolution goes through the registry helpers in `frontend/js/platforms.js` — see
+§6 `database/platform_metrics.py`.
 
 ---
 

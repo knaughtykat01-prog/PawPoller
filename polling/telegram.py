@@ -15,6 +15,7 @@ from zoneinfo import ZoneInfo
 import httpx
 
 import config
+from database import platform_metrics
 from database.db import get_connection
 from database.scope import account_clause  # optional `account_id = ?` WHERE-injection
 
@@ -22,53 +23,30 @@ from html import escape as _esc
 
 logger = logging.getLogger(__name__)
 
-# Platform-specific column name mapping.
-# Most platforms use views/favorites_count/comments_count, but some differ:
-#   Wattpad: reads/votes/comments_count/num_lists (no views column)
-#   Itaku: likes/comments_count/reshares (no views column at all)
-#   DeviantArt: also has downloads
+# Platform metric columns + table pairs, derived from the canonical registry
+# (database/platform_metrics.py) rather than hand-listed here. Both dicts used
+# to be maintained by hand and both had silently missed Instagram; the metric
+# map also put e621/Furbooru's `score` in the *views* slot.
+#
+# `score` now has its own key. The milestone scan below still measures the
+# booru family against the view thresholds (unchanged behaviour — see
+# check_milestones_for_platform), but nothing downstream can mistake a net
+# up−down score for a view count any more.
 PLATFORM_METRICS = {
-    "ib":  {"views": "views", "faves": "favorites_count", "comments": "comments_count"},
-    "fa":  {"views": "views", "faves": "favorites_count", "comments": "comments_count"},
-    "ws":  {"views": "views", "faves": "favorites_count", "comments": "comments_count"},
-    "sf":  {"views": "views", "faves": "favorites_count", "comments": "comments_count"},
-    "sqw": {"views": "views", "faves": "favorites_count", "comments": "comments_count"},
-    "ao3": {"views": "views", "faves": "favorites_count", "comments": "comments_count"},
-    "da":  {"views": "views", "faves": "favorites_count", "comments": "comments_count"},
-    "wp":  {"views": "reads", "faves": "votes", "comments": "comments_count"},
-    "ik":  {"views": None,   "faves": "likes", "comments": "comments_count"},
-    "bsky": {"views": None,  "faves": "likes", "comments": "replies"},
-    "tw":  {"views": "views", "faves": "likes", "comments": "replies"},
-    "mast": {"views": None,  "faves": "likes", "comments": "replies"},
-    "tum": {"views": None,   "faves": "notes", "comments": None},
-    "pix": {"views": "views", "faves": "favorites_count", "comments": "comments_count"},
-    "thr": {"views": "views", "faves": "likes", "comments": "replies"},
-    "e621": {"views": "score", "faves": "favorites_count", "comments": "comments_count"},
-    "fn":  {"views": "views", "faves": "favorites_count", "comments": "comments_count"},
-    "fbr": {"views": "score", "faves": "favorites_count", "comments": "comments_count"},
+    code: {
+        "views": platform_metrics.get(code).views,
+        "score": platform_metrics.get(code).score,
+        "faves": platform_metrics.get(code).faves,
+        "comments": platform_metrics.get(code).comments,
+    }
+    for code in platform_metrics.ALL_CODES
 }
 
-# Single source for each platform's (snapshot_table, submission_table) pair —
-# replaces the list that used to be duplicated inside every digest function.
+# Each platform's (snapshot_table, submission_table) pair — the pairing every
+# digest function walks.
 PLATFORM_TABLES = {
-    "ib":   ("snapshots", "submissions"),
-    "fa":   ("fa_snapshots", "fa_submissions"),
-    "ws":   ("ws_snapshots", "ws_submissions"),
-    "sf":   ("sf_snapshots", "sf_submissions"),
-    "sqw":  ("sqw_snapshots", "sqw_submissions"),
-    "ao3":  ("ao3_snapshots", "ao3_submissions"),
-    "da":   ("da_snapshots", "da_submissions"),
-    "wp":   ("wp_snapshots", "wp_submissions"),
-    "ik":   ("ik_snapshots", "ik_submissions"),
-    "bsky": ("bsky_snapshots", "bsky_submissions"),
-    "tw":   ("tw_snapshots", "tw_submissions"),
-    "mast": ("mast_snapshots", "mast_submissions"),
-    "tum": ("tum_snapshots", "tum_submissions"),
-    "pix": ("pix_snapshots", "pix_submissions"),
-    "thr": ("thr_snapshots", "thr_submissions"),
-    "e621": ("e621_snapshots", "e621_submissions"),
-    "fn":  ("fn_snapshots", "fn_submissions"),
-    "fbr": ("fbr_snapshots", "fbr_submissions"),
+    code: (platform_metrics.get(code).snapshots, platform_metrics.get(code).table)
+    for code in platform_metrics.ALL_CODES
 }
 
 # Default milestone thresholds — overridden by settings.json if configured.
@@ -496,7 +474,11 @@ async def check_milestones_batch(platform: str, snap_table: str, sub_table: str,
         return
 
     metrics = PLATFORM_METRICS.get(platform, PLATFORM_METRICS["ib"])
-    views_col = metrics["views"]
+    # Booru platforms have no view counter; their headline number is the net
+    # score. Measuring it against the view thresholds is what has always
+    # happened here — kept deliberately so e621/Furbooru alerts don't silently
+    # stop. (Follow-up: give score its own thresholds + wording.)
+    views_col = metrics["views"] or metrics.get("score")
     faves_col = metrics["faves"]
     comments_col = metrics["comments"]
 
@@ -564,7 +546,9 @@ async def check_goals() -> None:
     conn = get_connection()
     try:
         goals = conn.execute("SELECT * FROM goals WHERE completed_at IS NULL").fetchall()
-        table_map = {"ib": "submissions", "fa": "fa_submissions", "ws": "ws_submissions", "sf": "sf_submissions", "sqw": "sqw_submissions", "ao3": "ao3_submissions", "da": "da_submissions", "wp": "wp_submissions", "ik": "ik_submissions", "bsky": "bsky_submissions", "tw": "tw_submissions", "mast": "mast_submissions", "tum": "tum_submissions", "pix": "pix_submissions", "thr": "thr_submissions", "ig": "ig_submissions", "e621": "e621_submissions"}
+        # Registry-derived, so a goal set on a newly wired platform resolves.
+        table_map = {code: platform_metrics.table_for(code)
+                     for code in platform_metrics.ALL_CODES}
 
         for g in goals:
             g = dict(g)
@@ -642,7 +626,11 @@ def _get_digest_deltas(conn, snap_table: str, sub_table: str, platform: str, hou
     the snapshot subquery stays unscoped since submission_ids are account-unique).
     """
     metrics = PLATFORM_METRICS.get(platform, PLATFORM_METRICS["ib"])
-    views_col = metrics["views"]
+    # Booru platforms have no view counter; their headline number is the net
+    # score. Measuring it against the view thresholds is what has always
+    # happened here — kept deliberately so e621/Furbooru alerts don't silently
+    # stop. (Follow-up: give score its own thresholds + wording.)
+    views_col = metrics["views"] or metrics.get("score")
     faves_col = metrics["faves"]
     comments_col = metrics["comments"]
 
@@ -722,7 +710,11 @@ def _get_platform_totals(conn, sub_table: str, platform: str, account_id: int | 
     the totals are scoped to that one account (for per-persona digests).
     """
     metrics = PLATFORM_METRICS.get(platform, PLATFORM_METRICS["ib"])
-    views_col = metrics["views"]
+    # Booru platforms have no view counter; their headline number is the net
+    # score. Measuring it against the view thresholds is what has always
+    # happened here — kept deliberately so e621/Furbooru alerts don't silently
+    # stop. (Follow-up: give score its own thresholds + wording.)
+    views_col = metrics["views"] or metrics.get("score")
     faves_col = metrics["faves"]
     comments_col = metrics["comments"]
 

@@ -125,7 +125,9 @@ def persona_stats(conn: sqlite3.Connection, persona_id: int) -> dict:
     across its accounts, plus a per-platform breakdown. Reuses
     :func:`accounts.account_stats` — no new SQL. Accounts on not-yet-account-aware
     platforms (account_stats → None) contribute nothing."""
-    combined = {"submissions": 0, "views": 0, "favorites": 0, "comments": 0}
+    # `score` pools separately from views: the booru family's metric is a net
+    # up−down total that can be negative, so it must never land in a view count.
+    combined = {"submissions": 0, "views": 0, "favorites": 0, "comments": 0, "score": 0}
     by_platform: dict = {}
     for a in accounts_db.list_accounts(conn):
         if a.get("persona_id") != persona_id:
@@ -135,7 +137,7 @@ def persona_stats(conn: sqlite3.Connection, persona_id: int) -> dict:
             continue
         bp = by_platform.setdefault(
             a["platform"],
-            {"submissions": 0, "views": 0, "favorites": 0, "comments": 0},
+            {"submissions": 0, "views": 0, "favorites": 0, "comments": 0, "score": 0},
         )
         for k in combined:
             v = st.get(k, 0) or 0

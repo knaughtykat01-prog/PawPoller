@@ -18,8 +18,13 @@ all platforms in the group.
 """
 
 from __future__ import annotations
+import logging
 import sqlite3
 from typing import Any
+
+from database import platform_metrics
+
+logger = logging.getLogger(__name__)
 
 
 def create_group(conn: sqlite3.Connection, name: str, description: str = "") -> int:
@@ -129,55 +134,44 @@ def get_group_stats(conn: sqlite3.Connection, group_id: int) -> dict:
     ).fetchall()
 
     total_views = 0
+    total_score = 0
     total_faves = 0
     total_comments = 0
     submissions = []
 
-    _table_map = {"ib": "submissions", "fa": "fa_submissions", "ws": "ws_submissions", "sf": "sf_submissions", "sqw": "sqw_submissions", "ao3": "ao3_submissions", "da": "da_submissions", "wp": "wp_submissions", "ik": "ik_submissions", "bsky": "bsky_submissions", "tw": "tw_submissions"}
-    # Platform-specific column mappings: (views_col, faves_col, comments_col)
-    # views_col is None for platforms without a views column (e.g. Itaku, Bluesky)
-    _metrics = {
-        "ib": ("views", "favorites_count", "comments_count"),
-        "fa": ("views", "favorites_count", "comments_count"),
-        "ws": ("views", "favorites_count", "comments_count"),
-        "sf": ("views", "favorites_count", "comments_count"),
-        "sqw": ("views", "favorites_count", "comments_count"),
-        "ao3": ("views", "favorites_count", "comments_count"),
-        "da": ("views", "favorites_count", "comments_count"),
-        "wp": ("reads", "votes", "comments_count"),
-        "ik": (None, "likes", "comments_count"),
-        "bsky": (None, "likes", "replies"),
-        "tw":  ("views", "likes", "replies"),
-    }
-
+    # Table + metric columns come from the canonical registry
+    # (database/platform_metrics.py). The local copy this replaces covered only
+    # 11 platforms — a group containing an e621, Pixiv, Instagram, Mastodon,
+    # Threads, Tumblr, FurryNetwork or Furbooru submission silently skipped it,
+    # so the group total was short by however many of those it held.
     for m in members:
         platform = m["platform"]
         sub_id = m["submission_id"]
-        # Dynamic table lookup: resolve platform string to the correct
-        # platform-specific submissions table name.
-        table = _table_map.get(platform)
-        if not table:
+        spec = platform_metrics.get(platform)
+        if not spec:
             # Unknown platform -- skip this member gracefully.
             continue
         try:
             row = conn.execute(
-                f"SELECT * FROM {table} WHERE submission_id = ?",
+                f"SELECT * FROM {spec.table} WHERE submission_id = ?",
                 (sub_id,),
             ).fetchone()
-        except Exception:
+        except sqlite3.Error as e:
+            logger.warning("group stats: %s unavailable (%s): %s", platform, spec.table, e)
             continue
         if row:
             r = dict(row)
             # Tag each result with its source platform for display purposes.
             r["platform"] = platform
-            v_col, f_col, c_col = _metrics.get(platform, ("views", "favorites_count", "comments_count"))
-            total_views += (r.get(v_col, 0) or 0) if v_col else 0
-            total_faves += (r.get(f_col, 0) or 0) if f_col else 0
-            total_comments += (r.get(c_col, 0) or 0) if c_col else 0
+            total_views += (r.get(spec.views, 0) or 0) if spec.views else 0
+            total_score += (r.get(spec.score, 0) or 0) if spec.score else 0
+            total_faves += (r.get(spec.faves, 0) or 0) if spec.faves else 0
+            total_comments += (r.get(spec.comments, 0) or 0) if spec.comments else 0
             submissions.append(r)
 
     return {
         "total_views": total_views,
+        "total_score": total_score,
         "total_favorites": total_faves,
         "total_comments": total_comments,
         "submissions": submissions,
