@@ -1,0 +1,152 @@
+TAG DATABASE: USER ADDITIONS (ARTWORK VOCABULARY)
+========================================
+Source: tags in use across the PawPoller artwork catalogue that were not
+        present in any bundled DB file (physical / acts / kink / meta / image).
+Use:    autocomplete + the core-first tag ordering pass.
+Scope:  PawPoller ONLY. These are deliberately NOT folded into the canonical
+        workspace Tag_Database/ — that one stays story-focused.
+Added:  2026-08-07
+
+Section order below mirrors the CORE PRIORITY used when ordering a work's tags,
+because platforms only really use the first 20-25:
+
+    1 artist -> 2 species -> 3 character_(owner) -> 4 mainstream kink ->
+    5 the act -> 6 explicit anatomy -> 7 niche + descriptive -> 8 misc
+
+================================================================================
+ARTISTS
+================================================================================
+avbase | Artist credit. Signature legible in-frame (dated 2017).
+ariryu | Artist credit. Also seen as Ariryu_owo on X.
+banaldoost | Artist credit.
+bread2garlic | Artist credit. Signatures legible, dated 2021 and 2022.
+chrryblossomkid | Artist credit. Also goes by cherry_kid.
+dhustlestick | Artist credit. Signatures legible, dated April 2024.
+franubis | Artist credit. Signature legible in-frame.
+izy | Artist credit. Co-mark with Noodle Rain on the same piece.
+kasscabel | Artist credit. Confirmed as the harness-daki artist in the July 2026 art audit.
+kobuarts | Artist credit.
+lovelyendevers | Artist credit. Signature legible in-frame.
+maximus9s | Artist credit. Signature legible, dated 25 January 2023.
+noodle_rain | Artist credit. Co-mark with IZY on the same piece.
+raxkiyamato | Artist credit.
+rondonu | Artist credit.
+snejek | Artist credit.
+sugarfoxx | Artist credit. Watermark legible on five pieces.
+syfar_g | Artist credit. Signature legible in-frame.
+vektorichart | Artist credit.
+xblueashes | Artist credit. Watermark legible.
+
+================================================================================
+CHARACTERS & ACCOUNTS
+================================================================================
+ki_(kithetiger) | Ki, KitheTiger's white tiger character. Primary OC.
+kinar | Kinar, white tiger character. Primary OC.
+missboo | MissBoo, winged rabbit character. Recurring partner character.
+dar | Dar, recurring character. Short form of dar_(dartraxs).
+dar_(dartraxs) | Dar, character owned by DartraxS.
+tricia | Tricia, recurring character with a dedicated reference sheet.
+shapey | Shapey, recurring character.
+u_hustlestick | Account-owner tag for the Hustlestick persona.
+
+================================================================================
+SPECIES
+================================================================================
+saber-toothed_cat | A sabre-toothed cat species character, oversized upper canines.
+
+================================================================================
+ANATOMY & MARKINGS
+================================================================================
+heart_marking | A heart-shaped marking in the fur or on the skin.
+silver_hair | Silver or platinum head hair.
+wool | Woollen fleece coat, as on a sheep or ovine character.
+coils | Serpentine body coils, wrapped or looped around something.
+eggs | Eggs, laid or carried; pairs with oviposition.
+overflow | Fluid overflowing from a filled orifice or container.
+hermaphrodite | A character with both male and female genitalia. Prefer intersex where the platform supports it.
+
+================================================================================
+ACTS & GESTURES
+================================================================================
+gnawing | Chewing or gnawing on something, playful rather than harmful.
+tail_bite | Biting a tail, one's own or another character's.
+paw_on_cheek | A paw resting against a cheek, affectionate or coy.
+hands_on_cheeks | Both hands cupping the character's own cheeks, usually surprise or delight.
+finger_to_lips | A finger held to the lips: quiet, coy or secretive.
+peace_sign | Two fingers raised in a peace or victory sign.
+offering_leash | Holding out a leash in offer or invitation.
+panties_around_leg | Underwear pulled down and left hanging around one leg.
+embracing_from_behind | Holding another character from behind, arms wrapped forward.
+carrying_position | One character carried by another.
+squished | Body squashed or compressed against a surface or another character.
+
+================================================================================
+POSE & FRAMING
+================================================================================
+close_up | Tight crop on a subject or detail. Canonical form; close-up is an alias.
+front_view | The subject faces the viewer.
+rear_view | The subject is seen from behind.
+full_body | The whole body is in frame. Canonical form; fullbody is an alias.
+headshot | Head-and-shoulders crop.
+headless_framing | Framing that deliberately crops the head out.
+selfie_framing | Composed as if the character took the photo themselves.
+selfie_pov | First-person selfie viewpoint.
+pin_up | Pin-up styling: posed, presentational, glamour framing.
+lying_down | The character is lying down.
+lying_on_front | Lying face-down on the front of the body.
+lying_on_side | Lying on one side.
+looking_over_shoulder | Head turned back over the shoulder toward the viewer.
+multi-panel | A single image split into multiple panels.
+
+================================================================================
+STYLE & MEDIUM
+================================================================================
+digital | Digital artwork.
+painting | Painted artwork.
+painted_style | Rendered in a painterly style regardless of medium.
+illustration | Illustrative style.
+cartoon | Cartoon or toony style.
+monochrome | A single-hue image.
+greyscale | Black, white and grey only.
+sepia | Brown-toned monochrome.
+pastel | Soft pastel palette.
+rim_lighting | Light picking out the edge of the subject against the background.
+colour_swatch | A palette or colour-reference swatch, usually on a reference sheet.
+ych | Your Character Here: a template commission the buyer's character is dropped into.
+body_pillow_design | Artwork laid out as a body-pillow (dakimakura) print.
+meme_template | Artwork built on a recognisable meme layout.
+wip | Work in progress; unfinished.
+
+================================================================================
+TEXT & PROPS
+================================================================================
+dialogue | The image contains spoken dialogue.
+speech_bubble | Dialogue rendered in a speech bubble.
+english_text | Legible English text in the image.
+text | The image contains text.
+blank_sign | A held sign left blank, ready for edits.
+protest_sign | A held protest-style sign.
+stars | Star shapes as decoration.
+starry_eyes | Eyes drawn as stars: awe or infatuation.
+<3 | A heart, drawn or as text. Affection or arousal.
+
+================================================================================
+DESCRIPTIVE
+================================================================================
+cute | Cute or endearing framing.
+flirty | Flirtatious expression or body language.
+affection | Non-sexual affection between characters.
+friends | Characters framed as friends rather than partners.
+teen | A teenage-presenting character. Use only for non-sexual work.
+parent | A parent-and-offspring relationship between characters.
+
+================================================================================
+COMMISSION & STATUS
+================================================================================
+commissions | A commission-information or advertisement post.
+open | Commissions are open. Pairs with the commissions tag.
+custom | Custom commission work.
+affordable | Price-point wording on a commission advertisement.
+cheap | Price-point wording on a commission advertisement.
+nsfw | Not safe for work. Prefer the platform's own rating field over this tag.
+sfw | Safe for work. Prefer the platform's own rating field over this tag.

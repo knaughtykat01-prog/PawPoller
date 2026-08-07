@@ -6141,6 +6141,67 @@ pre-scoped. Persona names on the Accounts page link through.
 
 ## 20. Artwork (PostyBirb-style image posting, 2.31.0)
 
+### 20.0 Tag model: core / auxiliary + per-platform budgets (3.2.0)
+
+A work's `tags` dict is keyed by PLATFORM and has three **reserved** keys that
+are not platforms:
+
+| Key | Meaning |
+|---|---|
+| `core` | The 20-25 that matter, already in priority order: artist → species → character → mainstream kink → the act → explicit anatomy. What a budget-limited platform receives. |
+| `auxiliary` | The long tail. Appended wherever there is room. |
+| `default` | The pre-split flat list. Still read, so no folder needs migrating; converts on next save. |
+
+Any other key is a per-platform override and wins outright.
+`_canonical_tag_list()` joins core+auxiliary de-duplicated, order preserved.
+
+**Why a split rather than just ordering.** `posting/platforms/furaffinity.py::
+validate` REJECTS a submission whose joined tag string exceeds 500 characters —
+it does not truncate. So a heavily-tagged work could not be posted to FA at
+all, and a naive cut could land mid-way through the tags that matter.
+`_TAG_BUDGET` + `fit_tags_to_platform()` trim per platform (fa 500 chars,
+ao3/sqw 75 tags matching the OTW trim in `ao3.py`, everything else unlimited),
+always **from the tail**. If a budget cuts into the core set that is a tagging
+problem the user must see, so it logs a WARNING rather than shipping half a set.
+
+**Variants carry their own tags** (`variant_tags()`; absent = inherit the
+parent). Before 3.2.0 a variant had only `key`/`label`/`image`/`rating`, so an
+**SFW** or **Censored** render posted under its parent's explicit tag set. The
+catalogue holds SFW / Censored / NSFW / Nude / Cum / Sketch / Lined / WIP-GIF
+variants and three already carry a rating different from their parent.
+
+`build_artwork_package(..., variant_key=…)` is what actually posts one: it
+swaps in the variant's image, rating and tags. Note `ArtworkInfo` did not carry
+`variants` at all before 3.2.0 — they existed only in `list_artworks()`'s dict
+output — so the field had to be added to the dataclass or variant tags would
+have been unreachable from the posting path. An unknown key raises rather than
+silently posting the primary; a missing variant image logs and falls back.
+**No UI passes a variant_key yet**; this is the mechanism, not the button.
+
+**Ordering pass:** `scripts/reorder_tags.py`. Classifies each tag against the
+bundled DB and stable-sorts into the tiers, then splits core/auxiliary. It is a
+**lookup plus a stable sort — no model**, which is what makes it safe to run
+unattended and consistent with the no-AI rule. Two things worth knowing if you
+touch it:
+
+* Accuracy comes from the curated DB rows' **third field**
+  (`felid | … | species:felid`), consulted BEFORE section headers. Without it
+  the big "E621 IMPORT" blocks have no usable section and `felid`/`pantherine`
+  sort as anatomy instead of species.
+* Variant-label rules match on **token boundaries, not substrings** —
+  `"sfw" in "nsfw"` is True and inverted the SFW strip. And `Clean` means clean
+  line art here (it sits beside Lined/Base/Sketch/Messy), not safe-for-work.
+
+**The pass is text-only.** It reorders, de-duplicates and drops junk, and it
+trusts variant *labels*; it never inspects an image and so cannot invent
+content tags (background, clothing, expression, angle). Growing a work's tag
+count materially requires looking at the artwork.
+
+`tag_database/tag_database_user.txt` holds the art-only vocabulary (87 tags,
+including 20 artist names from the July 2026 audit), loaded via the `user`
+category the editor's tag DB loader already supports. The canonical workspace
+`Tag_Database/` is deliberately NOT given these — it stays story-focused.
+
 > **The `#/artwork` HUB is retired (2.155.0, backlog L)** — it redirects to
 > `#/library/type/artwork`. Its grid was `/api/works` filtered to
 > `content_type == "artwork"`, and its discovered tiles are now the Library's

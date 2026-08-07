@@ -12,6 +12,68 @@ popup, which is usually the wrong thing to show — so write the blockquote.
 
 ---
 
+## [3.2.0] - 2026-08-07 - Core vs auxiliary tags, per-platform tag budgets, and tags on variants
+
+> **Tags are now split into "core" and "auxiliary".** Core is the 20-25 that matter most, in priority order —
+> artist, species, character, the mainstream kink, the act, then the explicit anatomy. Auxiliary is everything else.
+> Why it matters: **FurAffinity rejects a submission outright if the whole tag string goes over 500 characters** — it
+> doesn't trim it, it refuses it. So a heavily-tagged piece simply couldn't post there. Now each platform gets what it
+> can take, trimmed from the end, and your core tags always survive. Platforms with no limit still get everything.
+>
+> **Variants can carry their own tags now.** They couldn't before — an SFW or Censored render inherited the parent's
+> explicit tag set, which would mis-tag it anywhere that reads tags literally. A variant with no tags of its own still
+> inherits, so nothing changes unless you want it to.
+>
+> Nothing has been retagged. This release is the mechanism only.
+
+**The tags dict keeps its platform keys and gains three reserved ones.** `core` (priority-ordered, what a
+budget-limited platform receives), `auxiliary` (the long tail), and the legacy flat `default`, still read so no folder
+needs migrating up front — a folder converts on its next save. Any other key is a per-platform override and still wins
+outright. `artwork_reader._canonical_tag_list` joins core+auxiliary de-duplicated with order preserved.
+
+**Per-platform tag budgets** (`artwork_reader._TAG_BUDGET` + `fit_tags_to_platform`): `fa` 500 chars,
+`ao3`/`sqw` 75 tags (matching the OTW trim already in `ao3.py`), everything else unlimited. Trimming drops from the
+TAIL — core-first ordering is what makes that safe. If a budget ever cuts into the core set that is a tagging problem
+the user needs to know about, so it logs a WARNING rather than quietly shipping half a tag set.
+
+**Variant tags** (`artwork_reader.variant_tags`): a variant may carry `tags: {core, auxiliary}`; absent means inherit.
+This was a real hole — the catalogue has **SFW / Censored / NSFW / Nude / Cum / Sketch / Lined / WIP GIF** variants and
+three already carry a rating different from their parent, yet every one of them was posting under the parent's tags.
+
+**`build_artwork_package(..., variant_key=…)`** posts a specific render: its image, its rating, its tags. Without this
+`variant_tags` would have been dead code — nothing in the posting path could select a variant, because
+`ArtworkInfo` did not even carry the variants list (it was only ever in `list_artworks()`'s dict output). The field is
+now on the dataclass, an unknown key raises rather than silently falling back to the primary, and a variant whose
+image file is missing logs a warning and uses the primary. **No UI passes a variant_key yet** — this is the mechanism
+a future "post this render" action will use.
+
+**`scripts/reorder_tags.py`** — the ordering pass. Classifies each tag against the bundled tag database and stable-sorts
+into the priority tiers, then splits core/auxiliary. **Lookup plus a stable sort, no model anywhere**, which is what
+makes it safe to run unattended and consistent with the no-AI rule. Accuracy comes from the curated DB rows' THIRD
+field (`felid | … | species:felid`) being consulted ahead of section headers — without it `felid` and `pantherine` fell
+through to their file's fallback and sorted as anatomy rather than species.
+
+**`tag_database/tag_database_user.txt`** (new) — the 87 tags in use across the artwork catalogue that no bundled DB
+file knew, folded into PawPoller's own DB via the `user` category the loader already supports. Includes the 20 artist
+names recovered by the July art audit, so the artist tier has a vocabulary to sort. **The canonical workspace
+`Tag_Database/` is deliberately untouched** — it stays story-focused. Unknown art tags: 87 → 9, and all 9 remaining are
+deliberate (2 canonicalised aliases + 7 junk artifacts).
+
+**Two bugs found in the ordering pass itself before any data was touched**, both now regression-tested:
+`"sfw" in "nsfw"` is True, so substring matching stripped the explicit tags off NSFW variants — precisely inverted;
+matching is tokenised on boundaries now. And `Clean` was being read as safe-for-work when in this catalogue it sits
+beside Lined/Base/Sketch/Messy and means clean line art.
+
+**Also surfaced, not yet fixed (no data written this release):** a literal tag `default` on 28 works (the dict key
+leaked into the value list on import), scraper leftovers on the commission-ad piece (`c_all`, `t_all`,
+`s_unspecified_any`), two works with too few tags for FA's 3-tag minimum (`Derg Takes Charge` has none at all), and
+**no work carries an artist tag** — 0 of 163.
+
++17 tests (`tests/test_artwork_core_tags.py`). Frontend `masterpieces.js` reads core+auxiliary with the legacy
+fallback.
+
+---
+
 ## [3.1.0] - 2026-08-06 - One platform registry: AO3/e621/Twitter stats stop vanishing, and Overview widgets get a platform filter
 
 > **Your numbers were too low, and now they're right.** Several platforms' stats were never making it into the Library,

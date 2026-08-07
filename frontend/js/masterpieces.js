@@ -758,9 +758,17 @@ window.Masterpieces = {
                 : 'Hide from the grid without deleting — the folder and site-links are kept'}">
             ${isJunk ? '♻ Restore' : '🗑 Junk'}</button>`;
 
-        // Canonical tags: prefer the "default" set, else the union across platforms.
+        // Canonical tags = core + auxiliary, in that order (core carries the
+        // 20-25 that platforms with a tag budget actually receive; auxiliary is
+        // the long tail). `default` is the pre-split flat list, still read so
+        // folders that haven't been re-saved keep working. Falls back to the
+        // union across platforms if a work only has per-platform lists.
         const ct = m.canonical_tags || {};
-        let tagList = (ct.default || []).slice();
+        const seenTag = new Set();
+        let tagList = [];
+        ['core', 'default', 'auxiliary'].forEach(k => (ct[k] || []).forEach(x => {
+            if (!seenTag.has(x.toLowerCase())) { seenTag.add(x.toLowerCase()); tagList.push(x); }
+        }));
         if (!tagList.length) {
             const seen = new Set();
             Object.values(ct).forEach(arr => (arr || []).forEach(x => seen.add(x)));

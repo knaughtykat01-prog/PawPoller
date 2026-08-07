@@ -48,6 +48,97 @@ _ALL_POSTER_IDS = ["ib", "fa", "ws", "sf", "da", "ik", "bsky", "e621", "ig", "fn
 _META_FILE = "masterpiece.json"
 _LEGACY_META_FILE = "artwork.json"
 
+# Keys inside a work's `tags` dict that are NOT platform codes. Everything else
+# in that dict is a per-platform override and wins over the canonical list.
+_TAG_KEY_CORE = "core"
+_TAG_KEY_AUX = "auxiliary"
+_TAG_KEY_LEGACY = "default"
+_RESERVED_TAG_KEYS = frozenset({_TAG_KEY_CORE, _TAG_KEY_AUX, _TAG_KEY_LEGACY})
+
+# Per-platform tag budgets. `chars` is the maximum length of the joined tag
+# string, `count` the maximum number of tags. None = no known limit, send
+# everything.
+#
+# FurAffinity's 500 is enforced by posting/platforms/furaffinity.py::validate,
+# which REJECTS the upload rather than truncating — so trimming here is what
+# keeps a heavily-tagged work postable to FA at all. AO3/SquidgeWorld cap the
+# total tag count at 75 (OTW); that trim already happens in ao3.py, and the
+# budget is repeated here so the resolver agrees with it.
+_TAG_BUDGET: dict[str, dict] = {
+    "fa": {"chars": 500, "count": None},
+    "ao3": {"chars": None, "count": 75},
+    "sqw": {"chars": None, "count": 75},
+}
+
+
+def _canonical_tag_list(tags: dict) -> list[str]:
+    """core + auxiliary, de-duplicated, order preserved.
+
+    Falls back to the legacy flat `default` list for folders written before the
+    core/auxiliary split, so nothing has to be migrated up front — a folder is
+    converted the next time it is saved.
+    """
+    ordered: list[str] = []
+    seen: set[str] = set()
+    for key in (_TAG_KEY_CORE, _TAG_KEY_LEGACY, _TAG_KEY_AUX):
+        for tag in tags.get(key) or []:
+            low = tag.lower()
+            if low not in seen:
+                seen.add(low)
+                ordered.append(tag)
+    return ordered
+
+
+def variant_tags(artwork_tags: dict, variant: dict) -> dict:
+    """The effective tag dict for one variant.
+
+    A variant may carry its own ``tags`` ({"core": [...], "auxiliary": [...]});
+    when it doesn't, it inherits the parent work's. This matters because a
+    variant is genuinely different content, not just a different file — the
+    catalogue already has **SFW**, **Nude**, **Cum**, **Clean** and **Sketch**
+    variants, and three of them carry a different rating from their parent.
+    Posting an SFW render with the parent's explicit tag set would mis-tag it
+    on every booru that reads tags literally.
+    """
+    own = variant.get("tags")
+    if isinstance(own, dict) and any(own.get(k) for k in _RESERVED_TAG_KEYS):
+        return {k: list(v) for k, v in own.items()}
+    return {k: list(v) for k, v in (artwork_tags or {}).items()}
+
+
+def fit_tags_to_platform(tags: list[str], platform: str,
+                         core_count: int | None = None) -> list[str]:
+    """Trim a tag list to what `platform` will actually accept.
+
+    Tags are assumed to arrive core-first. Trimming therefore drops from the
+    TAIL, which is why the core/auxiliary split matters: whatever survives is
+    guaranteed to be the tags that were declared to matter most.
+
+    `core_count` (when known) marks the boundary, and is used only to warn when
+    a platform's budget is so tight that even the core set does not fit — that
+    is a tagging problem the user needs to know about, not something to paper
+    over silently.
+    """
+    budget = _TAG_BUDGET.get(platform)
+    if not budget:
+        return list(tags)
+
+    out = list(tags)
+    max_count = budget.get("count")
+    if max_count and len(out) > max_count:
+        out = out[:max_count]
+    max_chars = budget.get("chars")
+    if max_chars:
+        while out and len(" ".join(out)) > max_chars:
+            out.pop()
+
+    if core_count and len(out) < core_count:
+        logger.warning(
+            "%s tag budget cut into the core set: %d of %d core tags fit "
+            "(limit chars=%s count=%s)",
+            platform, len(out), core_count, budget.get("chars"), budget.get("count"))
+    return out
+
 
 def _meta_path(folder: Path) -> Path | None:
     """Metadata file for an artwork/Masterpiece folder — prefers
@@ -114,6 +205,12 @@ class ArtworkInfo:
     # support per-image alt (Bluesky today); falls back to the title at post
     # time so alt is never regressed to empty.
     alt_text: str = ""
+
+    # Declared variants (2.190.0): one entry per alternate render, each with
+    # key/label/image/rating and — since 3.2.0 — optionally its own `tags`.
+    # Carried on the dataclass so build_artwork_package can post a specific
+    # render; list_artworks() has always exposed them in its dict output.
+    variants: list = field(default_factory=list)
 
     @property
     def image_path(self) -> str | None:
@@ -184,12 +281,28 @@ def load_artwork(name: str) -> ArtworkInfo:
 
     data = json.loads(meta_path.read_text(encoding="utf-8"))
 
-    # Tags: cascade default → any platform without an explicit list (mirrors the
-    # story_reader cascade + the editor's "Default tab cascades to all").
+    # Tags: cascade the canonical list → any platform without an explicit list
+    # (mirrors the story_reader cascade + the editor's "cascades to all").
+    #
+    # The tags dict is keyed by PLATFORM, with three RESERVED keys that are not
+    # platforms (see _RESERVED_TAG_KEYS):
+    #   core       the 20-25 tags that matter most, already in priority order
+    #              (artist → species → character → mainstream kink → act →
+    #              explicit anatomy → niche → misc)
+    #   auxiliary  the long tail; everything else worth carrying
+    #   default    legacy name for the whole flat list, read as `core`
+    #
+    # The split exists because the tag budget is per platform: FurAffinity
+    # rejects a submission whose whole tag string exceeds 500 characters, so a
+    # 90-tag work cannot go there intact. Keeping core separate means the
+    # platforms that truncate still receive the tags that matter, and the ones
+    # with no limit receive everything. Ordering alone could not guarantee that
+    # — a cut could land mid-way through the core set.
     tags = {k: list(v) for k, v in data.get("tags", {}).items()}
-    if "default" in tags:
+    canonical = _canonical_tag_list(tags)
+    if canonical:
         for pid in _ALL_POSTER_IDS:
-            tags.setdefault(pid, list(tags["default"]))
+            tags.setdefault(pid, list(canonical))
 
     return ArtworkInfo(
         name=name,
@@ -208,6 +321,7 @@ def load_artwork(name: str) -> ArtworkInfo:
         characters=list(data.get("characters", []) or []),
         created_at=data.get("created_at", ""),
         alt_text=data.get("alt_text", ""),
+        variants=list(data.get("variants", []) or []),
     )
 
 
@@ -218,6 +332,7 @@ def build_artwork_package(
     description_override: str | None = None,
     tags_override: list[str] | None = None,
     rating_override: str | None = None,
+    variant_key: str | None = None,
 ) -> StoryUploadPackage:
     """Build a StoryUploadPackage for one artwork + platform.
 
@@ -226,7 +341,22 @@ def build_artwork_package(
     title/description/tag overrides cascade just like ``build_package``.
     ``extra`` carries the platform's submission-category params (FA
     cat/species/gender, SF category/sub_type, …) for the poster to apply.
+
+    ``variant_key`` selects a declared variant instead of the primary render —
+    its image, its rating, and its own tags where it has them (3.2.0). A
+    variant is genuinely different content: the catalogue holds SFW, Censored,
+    Nude and Cum renders, three of which already carry a rating different from
+    their parent, so posting one under the parent's explicit tags would
+    mis-tag it. No UI passes a variant_key yet; this is the mechanism that a
+    "post this render" action will use.
     """
+    variant = None
+    if variant_key:
+        variant = next((v for v in (artwork.variants or [])
+                        if v.get("key") == variant_key), None)
+        if variant is None:
+            raise ValueError(
+                f"{artwork.name}: no variant with key {variant_key!r}")
     title = title_override or artwork.titles_by_platform.get(platform) or artwork.title
 
     if description_override:
@@ -247,15 +377,36 @@ def build_artwork_package(
     if tags_override is not None:
         tags = tags_override
     else:
-        tags = artwork.tags_by_platform.get(
-            platform, artwork.tags_by_platform.get("default", []))
+        # An explicit per-platform list wins outright; otherwise take the
+        # canonical core+auxiliary list and trim it to what this platform
+        # accepts. Trimming drops from the tail, so the core survives.
+        # A variant's own tags replace the parent's outright; without them it
+        # inherits, which is the pre-3.2.0 behaviour.
+        source = (variant_tags(artwork.tags_by_platform, variant)
+                  if variant is not None else artwork.tags_by_platform)
+        explicit = source.get(platform)
+        if explicit is not None and platform not in _RESERVED_TAG_KEYS:
+            tags = list(explicit)
+        else:
+            canonical = _canonical_tag_list(source)
+            core_len = len(source.get(_TAG_KEY_CORE) or []) or None
+            tags = fit_tags_to_platform(canonical, platform, core_len)
 
     settings = config.get_settings()
-    rating = (rating_override or artwork.rating
+    rating = (rating_override
+              or (variant.get("rating") if variant else "")
+              or artwork.rating
               or settings.get("artwork_default_rating",
                               settings.get("posting_default_rating", "adult")))
 
     image_path = artwork.image_path
+    if variant and variant.get("image"):
+        candidate = artwork.path / variant["image"]
+        if candidate.is_file():
+            image_path = str(candidate)
+        else:
+            logger.warning("%s: variant %r image %s missing, using the primary render",
+                           artwork.name, variant_key, variant["image"])
     file_type = Path(image_path).suffix.lstrip(".").lower() if image_path else ""
 
     return StoryUploadPackage(

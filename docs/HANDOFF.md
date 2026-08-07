@@ -1,7 +1,30 @@
 # PawPoller Session Handoff
 
-**Last updated:** 2026-08-06
-**Current version (master):** 3.1.0 — **One canonical platform-metric registry + a per-widget platform filter on the
+**Last updated:** 2026-08-07
+**Current version (master):** 3.2.0 — **Core/auxiliary tag split + per-platform tag budgets + tags on variants.**
+A work's `tags` dict keeps its platform keys and gains three RESERVED ones: `core` (the 20-25 that matter, in priority
+order — artist, species, character, mainstream kink, act, explicit anatomy), `auxiliary` (the long tail), and the
+legacy flat `default`, still read so nothing needs migrating up front. **Why a split and not just ordering:**
+FurAffinity REJECTS a submission whose joined tag string exceeds 500 chars rather than truncating it
+(`furaffinity.py::validate`), so a heavily-tagged work could not post there at all. `_TAG_BUDGET` +
+`fit_tags_to_platform` now trim per platform (fa 500 chars, ao3/sqw 75 tags, rest unlimited) **from the tail**, so core
+survives; a budget that cuts into core logs a WARNING instead of silently shipping half a set. **Variants can carry
+their own `tags` now** (`variant_tags`, absent = inherit) — previously an SFW/Censored render posted under its parent's
+explicit tags; the catalogue has SFW/Censored/NSFW/Nude/Cum/Sketch/Lined/WIP-GIF variants and 3 already differ in
+rating. New `scripts/reorder_tags.py` does the ordering: lookup + stable sort, **no model**, keyed off the curated DB
+rows' third field (`felid | … | species:felid`) which beats section headers. New
+`tag_database/tag_database_user.txt` folds the 87 art-only tags (incl. 20 artist names from the July audit) into
+PawPoller's DB via the existing `user` category — **the canonical workspace `Tag_Database/` is untouched by design**.
++17 tests.
+
+**NOTHING HAS BEEN RETAGGED.** 3.2.0 is the mechanism only; Rhys explicitly asked for the mechanics on prod and the
+art left alone. The prepared (unapplied) pass is in the session scratchpad. **Known data problems it surfaced, still
+open:** a literal `default` tag on 28 works; scraper junk on the commission-ad piece; `Derg Takes Charge` has zero tags
+and `Blows a Kiss ~` only the junk one, so **both fail FA's 3-tag minimum**; and **0 of 163 works carry an artist tag**
+despite artist being the top priority tier — the July audit has artists for 30 works, unapplied. Reaching the ~90-tag
+target needs an image pass; the ordering pass is text-only and cannot invent content tags.
+
+**Prior — 3.1.0 — One canonical platform-metric registry + a per-widget platform filter on the
 Overview.** The knowledge "which table holds platform X's stats and what are its metric columns called" was hand-copied
 into **15 places** that had drifted. New `database/platform_metrics.py` is the single source of truth (Python twin of
 `frontend/js/platforms.js`, which gains matching metric metadata). **The bug that motivated it:**
