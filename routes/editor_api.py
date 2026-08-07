@@ -1397,7 +1397,7 @@ async def publish_check(story_name: str):
         "ib":   ("username", "password"),
         "fa":   ("fa_cookie_a", "fa_cookie_b"),
         "ws":   ("ws_api_key",),
-        "sf":   ("sf_username", "sf_password"),
+        "sf":   ("sf_api_token",),
         # SqW posting falls back to the polling creds when the author-specific
         # ones aren't set (posting/platforms/squidgeworld.py resolves
         # sqw_author_username OR sqw_username). Mirror that OR here so a SqW

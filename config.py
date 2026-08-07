@@ -597,8 +597,10 @@ CREDENTIAL_FIELDS = frozenset({
     "fa_cookie_a", "fa_cookie_b",
     # Weasyl
     "ws_api_key",
-    # SoFurry
-    "sf_username", "sf_password", "sf_session_cookies",
+    # SoFurry — 3.4.0 moved to an official-API Personal Access Token. The old
+    # login fields stay listed so any value left in an existing vault is still
+    # treated as sensitive until the migration clears it.
+    "sf_api_token", "sf_username", "sf_password", "sf_session_cookies",
     # SquidgeWorld
     "sqw_username", "sqw_password",
     "sqw_author_username", "sqw_author_password",
@@ -682,7 +684,7 @@ PLATFORM_CREDENTIAL_FIELDS = {
     "ib": ["username", "password"],
     "fa": ["fa_username", "fa_cookie_a", "fa_cookie_b"],
     "ws": ["ws_username", "ws_api_key"],
-    "sf": ["sf_username", "sf_password", "sf_session_cookies", "sf_display_name"],
+    "sf": ["sf_api_token", "sf_display_name"],
     "sqw": ["sqw_username", "sqw_password", "sqw_target_user",
             "sqw_author_username", "sqw_author_password"],
     "ao3": ["ao3_username", "ao3_password", "ao3_target_user", "ao3_session_cookie"],
@@ -1084,7 +1086,7 @@ def merge_synced_settings(incoming: dict, client_timestamp: float | None = None)
 
 
 # ── App metadata ──
-APP_VERSION = "3.3.0"
+APP_VERSION = "3.4.0"
 
 # ── Inkbunny API settings ──
 INKBUNNY_API_BASE = "https://inkbunny.net"     # Inkbunny API root URL
@@ -1308,6 +1310,43 @@ def migrate_dashboard_auth() -> None:
     delete_settings_keys(["dashboard_password", "dashboard_user"])
     invalidate_auth_required_cache()
     logger.info("Migrated dashboard password to bcrypt hash for user '%s'", legacy_user)
+
+
+# Legacy SoFurry login fields, dead since 3.4.0. The suffix match below also
+# catches the per-account variants, which are keyed "acct_<N>_<field>"
+# (see account_setting_key).
+_SF_LEGACY_CRED_KEYS = ("sf_username", "sf_password", "sf_totp_code",
+                        "sf_session_cookies")
+
+
+def migrate_sofurry_credentials() -> None:
+    """Scrub the dead SoFurry email/password/cookie credentials (3.4.0).
+
+    SoFurry shipped an official API, so PawPoller authenticates with a Personal
+    Access Token and never logs in. The old fields are not merely unused — leaving
+    a real password and a session cookie sitting in the vault is a standing
+    liability for a credential nothing can spend any more.
+
+    This cannot migrate anything *into* the token: a PAT is minted by the user on
+    SoFurry, so a password cannot be exchanged for one. The user has to reconnect
+    once. The scrub is therefore unconditional, and deliberately runs even when no
+    token is configured yet — the dead credential should not survive on the theory
+    that it might be needed, because it cannot be.
+
+    Called on startup from both server.py (headless) and dashboard.py (desktop).
+    Safe to call repeatedly — no-ops once the keys are gone.
+    """
+    settings = get_settings()
+    stale = [k for k in settings
+             if any(k == base or k.endswith("_" + base) for base in _SF_LEGACY_CRED_KEYS)]
+    if not stale:
+        return
+    delete_settings_keys(stale)
+    logger.info(
+        "SoFurry: cleared %d legacy login field(s) — the official API uses a "
+        "Personal Access Token (reconnect SoFurry in Settings if you have not yet)",
+        len(stale),
+    )
 
 
 # ── Run-on-startup ────────────────────────────────────────────

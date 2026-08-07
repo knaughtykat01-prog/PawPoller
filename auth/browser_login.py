@@ -103,21 +103,10 @@ PLATFORM_LOGIN: dict[str, dict] = {
             {"id": "da_username", "label": "DA username to track", "placeholder": "DeviantArt username", "required": True},
         ],
     },
-    "sf": {
-        "name": "SoFurry",
-        "url": "https://www.sofurry.com/user/login",
-        "success_check": lambda cookies, url: (
-            "/user/login" not in (url or "") and
-            "sofurry.com" in (url or "")
-        ),
-        "extract": lambda cookies, url: {
-            # SF uses session cookies -- capture them all for the session
-            "sf_session_cookies": "; ".join(f"{k}={v}" for k, v in cookies.items()),
-        },
-        "fields": [
-            {"id": "sf_display_name", "label": "SF display name", "placeholder": "Your SoFurry profile name", "required": True},
-        ],
-    },
+    # SoFurry was removed here in 3.4.0. It authenticates with an official-API
+    # Personal Access Token now, so there is no session cookie to capture — this
+    # entry would have harvested cookies that nothing reads. Connect SF by pasting
+    # a token (Settings → SoFurry), not by driving a browser login.
     "tw": {
         "name": "X / Twitter",
         "url": "https://x.com/i/flow/login",

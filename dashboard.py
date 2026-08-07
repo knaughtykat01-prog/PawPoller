@@ -87,6 +87,7 @@ logger = logging.getLogger("dashboard")
 async def lifespan(app: FastAPI):
     init_db()
     config.migrate_dashboard_auth()
+    config.migrate_sofurry_credentials()
     # Vault is always-on: sweep any plaintext credentials (pre-2.101.0
     # settings.json, hand edits, old-backup restores) into the vault.
     _migrated = config.ensure_vault()

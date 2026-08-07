@@ -71,8 +71,11 @@ _ENV_TO_SETTINGS = {
     "FA_COOKIE_A":      "fa_cookie_a",
     "FA_COOKIE_B":      "fa_cookie_b",
     "WS_API_KEY":       "ws_api_key",
-    "SF_USERNAME":      "sf_username",
-    "SF_PASSWORD":      "sf_password",
+    # SoFurry: PAT only since 3.4.0. SF_USERNAME/SF_PASSWORD are deliberately NOT
+    # mapped any more — seeding them would re-create the very keys
+    # migrate_sofurry_credentials() deletes, on every single restart (the BUG-004
+    # pattern that defeated the dashboard-password migration in 2.14.6).
+    "SF_API_TOKEN":     "sf_api_token",
     "SF_DISPLAY_NAME":  "sf_display_name",
     "SQW_USERNAME":     "sqw_username",
     "SQW_PASSWORD":     "sqw_password",
@@ -589,6 +592,9 @@ def main():
 
     # Step 2b: Migrate legacy plaintext password to bcrypt hash
     config.migrate_dashboard_auth()
+
+    # Step 2b-i: Scrub the dead SoFurry login credentials (3.4.0 — PAT migration)
+    config.migrate_sofurry_credentials()
 
     # Step 2b-ii: Vault is always-on — sweep any plaintext credentials into
     # the vault BEFORE pollers/threads read settings (idempotent, cheap).

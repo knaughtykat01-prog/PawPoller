@@ -164,7 +164,7 @@ async def setup_status():
         "has_archive_path": bool(settings.get("posting_story_archive_path")),
         "platforms_connected": sum(
             1 for key in (
-                "username", "fa_cookie_a", "sf_username", "ws_api_key",
+                "username", "fa_cookie_a", "sf_api_token", "ws_api_key",
                 "ao3_username", "sqw_username", "bsky_identifier",
                 "da_refresh_token", "wp_username", "ik_token", "tw_api_key",
                 "mast_access_token", "tum_api_key", "pix_refresh_token", "thr_access_token",

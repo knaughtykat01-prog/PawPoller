@@ -20,7 +20,7 @@ The tech stack is FastAPI + SQLite (WAL mode) + Vanilla JS SPA + pywebview + pys
 | 1 | Inkbunny    | Art, stories, music  | Official JSON API |
 | 2 | FurAffinity | Art, stories, music  | FAExport API + scraping |
 | 3 | Weasyl      | Art, stories         | Official REST API |
-| 4 | SoFurry     | Art, stories, music  | Scraping + JSON hybrid |
+| 4 | SoFurry     | Art, stories, music  | Official API (PAT) + login-free JSON for stats |
 | 5 | SquidgeWorld| Stories (OTW Archive)| HTML scraping |
 | 6 | AO3         | Stories (OTW Archive)| HTML scraping |
 | 7 | DeviantArt  | Art, literature      | Official OAuth2 API (client-credentials) |
@@ -120,7 +120,7 @@ PawPoller/
 │   ├── ib/                  #   Inkbunny — InkbunnyClient with SID caching
 │   ├── fa/                  #   FurAffinity — FAClient with dual HTTP transports
 │   ├── weasyl/              #   Weasyl — WeasylClient with cursor pagination
-│   ├── sf/                  #   SoFurry — SoFurryClient with CF proxy support
+│   ├── sf/                  #   SoFurry — official API (PAT) + anonymous stats
 │   ├── sqw/                 #   SquidgeWorld — SqWClient with Anubis challenge solving
 │   ├── ao3/                 #   AO3 — AO3Client with CSRF auth
 │   ├── da/                  #   DeviantArt — DAClient, official OAuth2 API (client-credentials, no proxy)
@@ -139,7 +139,7 @@ PawPoller/
 │   ├── poller.py            # Inkbunny poll cycle orchestration (6-step)
 │   ├── fa_poller.py         # FurAffinity poll cycle (5-step + spam filter)
 │   ├── ws_poller.py         # Weasyl poll cycle (3-step, simplest)
-│   ├── sf_poller.py         # SoFurry poll cycle (4-step + follower scraping)
+│   ├── sf_poller.py         # SoFurry poll cycle (API listing + anon stats)
 │   ├── sqw_poller.py        # SquidgeWorld poll cycle
 │   ├── ao3_poller.py        # AO3 poll cycle
 │   ├── da_poller.py         # DeviantArt poll cycle (no comments/watchers)
@@ -226,7 +226,7 @@ PawPoller/
 │       ├── inkbunny.py      # IB poster (official API upload)
 │       ├── furaffinity.py   # FA poster (form scraping, desktop-only)
 │       ├── weasyl.py        # WS poster (CSRF form + API key)
-│       ├── sofurry.py       # SF poster (REST + CSRF)
+│       ├── sofurry.py       # SF poster (official API v1, bearer PAT)
 │       ├── squidgeworld.py  # SqW poster (OTW Rails form + work skin)
 │       ├── ao3.py           # AO3 poster (OTW Rails, CF-proxy on desktop, work skin)
 │       ├── deviantart.py    # DA poster (Eclipse stash flow)
@@ -737,64 +737,103 @@ detail["media_url"] = data.get("media", {}).get("submission", [{}])[0].get("url"
 
 ### SoFurry (`clients/sf/client.py`) — `SoFurryClient`
 
-**Authentication flow** (Laravel CSRF):
-```
-1. GET /login → extract CSRF _token from hidden form field
-2. POST /login with {_token, email, password, remember: "on"}
-3. If 2FA enabled → redirects to /auth/2fa → submit TOTP code
-4. On success → session cookies set (including remember_web_* 30-day cookie), redirect to /
-```
+**3.4.0: official API + Personal Access Token.** SoFurry shipped a public API at
+`https://api.sofurry.com` (docs `developer.sofurry.com/dev-docs`), which replaced the
+entire reverse-engineered auth stack — the Laravel `/login` scrape, the
+`/fe/auth/sofurry` OAuth2-PKCE bridge, `X-CSRF-Token` threading, and cookie
+import/export are all deleted. Authentication is one header:
+`Authorization: Bearer <PAT>`. **This closed the 2FA gap permanently** — a PAT never
+logs in, so the previously-unhandled `/auth/2fa` redirect cannot occur. Vendored
+spec + collection: `docs/reference/sofurry_openapi.yaml`,
+`sofurry_postman_collection.json`; full findings in `sofurry_beta_api_map.md`.
 
-**Critical: Login must use email address, not display name.** The `sf_username` setting should contain the user's email. The `sf_display_name` is the public profile handle (e.g. "KnaughtyKat") used for gallery URLs.
+**The client holds two HTTP surfaces, and the split is forced, not stylistic:**
 
-**Two authentication modes**:
+| | `self._api` | `self._web` |
+|---|---|---|
+| Host | `api.sofurry.com` | `sofurry.com` |
+| Auth | Bearer PAT | **none** |
+| Carries | all writes + gallery listing | all analytics |
 
-1. **Direct login** (default for local/desktop): The client authenticates directly with SoFurry using `"remember": "on"` in the login POST, which triggers a `remember_web_*` cookie lasting ~30 days. Session cookies can be persisted to `settings.json` and restored on restart, allowing the app to skip re-login for the cookie's lifetime.
+The official API returns **no statistics whatsoever** — no views, likes, comment
+counts, or follower counts. That was verified three independent ways (the prose docs,
+the OpenAPI schema's 109 property names, and live responses), so it is not an artifact
+of the docs being unfinished. Analytics therefore stay on sofurry.com, which serves
+published works — **Adult included** — with no session at all. That is precisely why
+deleting the login cost nothing.
 
-2. **CF Worker proxy** (required for server/datacenter IPs): When `proxy_url` and `proxy_key` are provided, the client swaps `httpx.AsyncHTTPTransport` for `CloudflareProxyTransport`. In proxy mode, the client uses `login_and_fetch_gallery()` which performs GET/POST login + gallery fetch in a single Worker invocation. Cookie persistence is disabled in proxy mode because CF Workers rotate egress IPs between invocations and SoFurry pins sessions to the login IP.
+**Credentials:** `sf_api_token` + `sf_display_name`. The handle is *derived* from
+`GET /v1/user/me` rather than typed, so it can no longer be mistyped (which used to
+produce a recurring "could not verify display name" warning every poll cycle).
+`config.migrate_sofurry_credentials()` runs on startup from both entry points and
+deletes the dead `sf_username` / `sf_password` / `sf_totp_code` / `sf_session_cookies`
+(including `acct<N>_`-prefixed variants). `SF_USERNAME`/`SF_PASSWORD` were removed from
+server.py's env-seed map — leaving them would re-create those keys on every restart,
+the BUG-004 pattern that defeated the dashboard-password migration in 2.14.6.
 
-**Session cookie persistence** (`export_cookies()` / `import_cookies()`):
-- After a successful gallery fetch, the poller calls `export_cookies()` to serialize the httpx cookie jar (cookie names, values, domains, paths) plus metadata (`saved_at`, `saved_for_user`) into a dict stored as `sf_session_cookies` in `settings.json`.
-- On startup, the poller calls `import_cookies()` to restore cookies from `settings.json`. Validates that `saved_for_user` matches the current username (rejects stale cookies from a different account).
-- `ensure_logged_in()` handles the restored-cookies case: if cookies exist in the jar but `_logged_in` is False, it temporarily sets the flag and calls `check_session()` to test them. If valid, login is skipped entirely. If invalid (expired/corrupt), falls back to fresh login.
-- Cookie persistence is only used in direct login mode (not through CF proxy).
-- Cookies are automatically cleared when credentials change (`update_credentials()` returns `True`).
-- The `/auth/connect` endpoint also saves cookies after successful validation.
-- The `/auth/disconnect` endpoint clears `sf_session_cookies` along with credentials.
+**Polling.** Gallery listing is `GET /v1/user/{handle}/submissions` (paginated,
+`meta.last_page`, private works included). It replaced a scrape of
+`/u/{handle}/gallery.data` that took *every* 8-char alphanumeric token as a
+"candidate" and — because that endpoint is SFW-filtered when logged out — returned
+nothing at all for an adult gallery. Per-submission stats come from login-free
+`GET sofurry.com/api/submission/{id}` (clean JSON); the comment count is the one
+figure with no JSON source, so it is still parsed from `/s/{id}.data` using a pattern
+anchored between two literals (`"total",N,"hasMore"`).
 
-**Stored cookie structure** (in `settings.json`):
-```json
-"sf_session_cookies": {
-  "cookies": {
-    "XSRF-TOKEN": {"value": "...", "domain": ".sofurry.com", "path": "/"},
-    "sofurry_session": {"value": "...", "domain": ".sofurry.com", "path": "/"},
-    "remember_web_...": {"value": "...", "domain": ".sofurry.com", "path": "/"},
-    "sfxlogin": {"value": "...", "domain": ".sofurry.com", "path": "/"}
-  },
-  "saved_at": "2026-03-10T12:00:00+00:00",
-  "saved_for_user": "user@example.com"
-}
-```
+> **Why stats are JSON now, not regex.** The old parser pulled stats out of the
+> turbo-stream payload with `"key",(\d+)`, assuming a value always follows its key.
+> That payload is devalue-encoded with a **de-duplicated value table**: large unique
+> numbers (view counts) are emitted fresh and match, but small integers already in the
+> table are not re-emitted, so the key is followed by the *next key* and the parse
+> returned 0. Like counts are exactly those small integers — **SF favourites were
+> systematically under-counted** (prod: 10 submissions, 51 favourites, max 16). The
+> fix is not a better regex; it is not parsing that format for stats at all.
+> Historical snapshots remain wrong.
 
-**SoFurry "beta" (2026-06 React-Router rewrite).** SF is now a hybrid: Laravel
-serves auth (`/login`); a Remix front-end serves browse + a new `/api/*`. Full
-reverse-engineered map: `docs/reference/sofurry_beta_api_map.md`.
+`comments_count` is `None` when unknown rather than 0, and `sf_poller` carries the
+previous value forward — a 0 would read as "every comment deleted" and re-fire them
+all as new on the next successful poll.
 
-**Polling** (login-free for published works): stats come from React-Router loader
-data at `GET /s/{id}.data` (turbo-stream; `views`/`likes`/comment count parsed by
-`_rr_int`/`_rr_str`). Discovery reads `/u/{handle}/gallery.data` (SFW-filtered when
-logged out, so new-work auto-discovery needs an authed session).
+**Posting** (official API):
+- `PUT /v1/submission` → mint an empty **private** draft (`{id}`)
+- `POST /v1/submission/{id}/content` (multipart `file`, **≥ 1 KB**) → add a content item
+- `POST /v1/submission/{id}` (JSON) → metadata, `artistTags` array, `contentOrder`;
+  `privacy=3` publishes
+- `POST /v1/submission/{id}/content/{cid}` (JSON `title`/`description`/`binary`) →
+  retitle **or replace a content item in place**
+- `GET /v1/submission/{id}` → read (owner's private works included; category/type are
+  ints, unlike the old internal API which echoed display strings)
 
-**Posting** (authenticated, 2.28.0): Laravel `/login` then the **`/fe/auth/sofurry`
-OAuth2-PKCE bridge** mints an authed Remix session (`_ensure_api_session()`). Writes
-send `X-CSRF-Token` (from `<meta name="csrf-token">`):
-- `POST /api/upload-create` → mint an empty submission (`{id}`)
-- `POST /api/upload-content` (multipart `submissionId`+`file`, HTML ≥ 1 KB) → add a content item
-- `POST /api/submission-editor` (a `_endpoint`/`_method` dispatcher) → set metadata, chapter titles (`submission/{id}/content/{cid}`), order (`contentOrder[]`), delete content (`upload/{id}/content/{cid}` + `_method=DELETE`), thumbnail (`submission/{id}/thumbnail` + multipart `file`, png/jpeg/webp 1 KB–1 MB; `_method=DELETE` regenerates)
-- `GET /api/submission/{id}` → read (fields nested under `submission`; category/type echo display strings)
-- `DELETE /api/submission/{id}` → delete
-Category/type are INT codes on write (20=Writing, 21=Short Story, 29=Book). The old
-`/ui/submission*` API is gone (Remix 404s `/ui/*`).
+Category/type are INT codes (20=Writing, 21=Short Story, **22=Book**). Note 22 — the
+pre-3.4.0 map had Book as 29, which the official enum contradicts.
+
+**Four hard limits, each found by probing and each encoded in the client:**
+
+1. **`Accept: application/json` is mandatory.** Without it an unauthenticated call
+   302s to `sofurry.com/login` with an HTML body instead of returning a JSON error, so
+   a client omitting it mis-reports auth failures as something else.
+2. **HTTP status and body `statusCode` disagree.** An unsupported method returns
+   **HTTP 500** carrying `{"statusCode": 400}`. `_check()` prefers the body's code;
+   branching on the HTTP status alone would retry a permanent 400 forever.
+3. **Nothing can be deleted.** `DELETE` is unsupported on both the submission and
+   content routes, and Laravel `_method` spoofing is rejected too (the spoof *is*
+   honoured — routing then refuses — so it is a genuine absence). Content is therefore
+   replaced in place via `update_content()`, which is what both callers wanted anyway
+   and removes the window where a submission held two copies. **If a story's chapter
+   count shrinks, the surplus items cannot be removed by any API call**; the poster
+   logs a WARNING naming the ids and the edit URL.
+4. **No thumbnail upload.** All four plausible routes 404 and `thumbUrl`/`coverUrl`
+   are read-only, so `create_submission(thumbnail_path=...)` logs and skips.
+
+**Rate limit: 60 requests/minute** (`x-ratelimit-limit`), undocumented — discovered
+from response headers, confirmed per-minute by watching the counter reset.
+
+**⚠ Proxy applies to BOTH surfaces.** `api.sofurry.com` is IP-blocked from datacenter
+ranges: the GCP VM gets a Cloudflare 403 on every UA, while a residential IP gets a
+normal 401. It is SoFurry's own WAF rule against the GCP range, not generic Cloudflare
+datacenter-blocking — `e621.net`, also Cloudflare-fronted, returns 200 from the same
+VM in the same session. Wiring only the scrape half through the proxy would work on
+the desktop and fail on the server, which is the FA-posting trap in a new costume.
 
 **Followers:** count from login-free `GET /api/profile?handle=` (`user.followerCount`);
 the username list from login-free `GET /api/followers?handle=&mode=followers&page=`

@@ -291,7 +291,7 @@ _PLATFORM_HEALTH_CONFIG = [
     ("ib",   queries,      "get_last_poll",      "poll_interval_minutes",      lambda s: bool(s.get("username") and s.get("password"))),
     ("fa",   fa_queries,   "get_fa_last_poll",   "fa_poll_interval_minutes",   lambda s: bool(s.get("fa_cookie_a") and s.get("fa_cookie_b"))),
     ("ws",   ws_queries,   "get_ws_last_poll",   "ws_poll_interval_minutes",   lambda s: bool(s.get("ws_api_key"))),
-    ("sf",   sf_queries,   "get_sf_last_poll",   "sf_poll_interval_minutes",   lambda s: bool(s.get("sf_username") and s.get("sf_password"))),
+    ("sf",   sf_queries,   "get_sf_last_poll",   "sf_poll_interval_minutes",   lambda s: bool(s.get("sf_api_token"))),
     ("sqw",  sqw_queries,  "get_sqw_last_poll",  "sqw_poll_interval_minutes",  lambda s: bool(s.get("sqw_username") and s.get("sqw_password"))),
     # AO3 accepts username+password OR session cookie (mirrors server.py:213 gate)
     ("ao3",  ao3_queries,  "get_ao3_last_poll",  "ao3_poll_interval_minutes",  lambda s: bool((s.get("ao3_username") and s.get("ao3_password")) or s.get("ao3_session_cookie"))),

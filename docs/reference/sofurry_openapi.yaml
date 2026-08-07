@@ -1,0 +1,2064 @@
+openapi: 3.0.3
+info:
+  title: 'SoFurry API Documentation'
+  description: 'The SoFurry public API (v1) provides programmatic access to user data, submissions, content and site statistics.'
+  version: 1.0.0
+servers:
+  -
+    url: 'https://api.sofurry.com'
+tags:
+  -
+    name: Endpoints
+    description: ''
+  -
+    name: Folders
+    description: "\nManage your submission folders. Folders organise your own submissions into\nnamed groups. Every endpoint operates on the authenticated user's folders."
+  -
+    name: Site
+    description: "\nGeneral site configuration endpoints."
+  -
+    name: Statistics
+    description: "\nStatistics information"
+  -
+    name: Submissions
+    description: "\nEndpoints for creating, reading and updating submissions and their content."
+  -
+    name: Tags
+    description: ''
+  -
+    name: Users
+    description: "\nAPIs for managing users"
+components:
+  securitySchemes:
+    default:
+      type: http
+      scheme: bearer
+      description: 'You can generate a personal access token (PAT) by visiting your <a href="https://www.sofurry.com/settings/pat-create">account settings</a>.'
+security:
+  -
+    default: []
+paths:
+  /:
+    get:
+      summary: ''
+      operationId: get
+      description: ''
+      parameters: []
+      responses: {  }
+      tags:
+        - Endpoints
+  /jwks:
+    get:
+      summary: ''
+      operationId: getJwks
+      description: ''
+      parameters: []
+      responses: {  }
+      tags:
+        - Endpoints
+  /v1/folders:
+    get:
+      summary: 'List folders'
+      operationId: listFolders
+      description: 'Returns all folders belonging to the authenticated user.'
+      parameters: []
+      responses:
+        200:
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    id:
+                      type: string
+                      example: abc123
+                    name:
+                      type: string
+                      example: Sketches
+                example:
+                  -
+                    id: abc123
+                    name: Sketches
+                  -
+                    id: def456
+                    name: WIPs
+      tags:
+        - Folders
+  /v1/folder:
+    post:
+      summary: 'Create a folder'
+      operationId: createAFolder
+      description: ''
+      parameters: []
+      responses:
+        201:
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                example:
+                  id: abc123
+                  name: Sketches
+                properties:
+                  id:
+                    type: string
+                    example: abc123
+                  name:
+                    type: string
+                    example: Sketches
+      tags:
+        - Folders
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                  description: 'The folder name (1-255 characters).'
+                  example: Sketches
+              required:
+                - name
+  '/v1/folder/{folder}':
+    get:
+      summary: 'Get a folder'
+      operationId: getAFolder
+      description: "Returns a single folder you own, with the hashids of the submissions it\ncontains."
+      parameters: []
+      responses:
+        200:
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                example:
+                  id: abc123
+                  name: Sketches
+                  thumbnailUrl: 'https://cdn.sofurry.com/...'
+                  submissions:
+                    - def456
+                    - ghi789
+                properties:
+                  id:
+                    type: string
+                    example: abc123
+                  name:
+                    type: string
+                    example: Sketches
+                  thumbnailUrl:
+                    type: string
+                    example: 'https://cdn.sofurry.com/...'
+                  submissions:
+                    type: array
+                    example:
+                      - def456
+                      - ghi789
+                    items:
+                      type: string
+        403:
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                example:
+                  error: 'Permission denied'
+                properties:
+                  error:
+                    type: string
+                    example: 'Permission denied'
+      tags:
+        - Folders
+    put:
+      summary: 'Rename a folder'
+      operationId: renameAFolder
+      description: ''
+      parameters: []
+      responses:
+        200:
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                example:
+                  id: abc123
+                  name: WIPs
+                properties:
+                  id:
+                    type: string
+                    example: abc123
+                  name:
+                    type: string
+                    example: WIPs
+        403:
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                example:
+                  error: 'Permission denied'
+                properties:
+                  error:
+                    type: string
+                    example: 'Permission denied'
+      tags:
+        - Folders
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                  description: 'The new folder name (1-255 characters).'
+                  example: WIPs
+              required:
+                - name
+    delete:
+      summary: 'Delete a folder'
+      operationId: deleteAFolder
+      description: "Deletes the folder itself. The submissions inside are not deleted — they\nare only removed from the folder."
+      parameters: []
+      responses:
+        204:
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                example: {  }
+                properties: {  }
+        403:
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                example:
+                  error: 'Permission denied'
+                properties:
+                  error:
+                    type: string
+                    example: 'Permission denied'
+      tags:
+        - Folders
+    parameters:
+      -
+        in: path
+        name: folder
+        description: 'The hashid of the folder.'
+        example: abc123
+        required: true
+        schema:
+          type: string
+  '/v1/folder/{folder}/{submission}':
+    post:
+      summary: 'Add a submission to a folder'
+      operationId: addASubmissionToAFolder
+      description: "Both the folder and the submission must belong to you. Adding a submission\nthat is already in the folder is a no-op."
+      parameters: []
+      responses:
+        204:
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                example: {  }
+                properties: {  }
+        403:
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                example:
+                  error: 'Permission denied'
+                properties:
+                  error:
+                    type: string
+                    example: 'Permission denied'
+      tags:
+        - Folders
+    delete:
+      summary: 'Remove a submission from a folder'
+      operationId: removeASubmissionFromAFolder
+      description: ''
+      parameters: []
+      responses:
+        204:
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                example: {  }
+                properties: {  }
+        403:
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                example:
+                  error: 'Permission denied'
+                properties:
+                  error:
+                    type: string
+                    example: 'Permission denied'
+      tags:
+        - Folders
+    parameters:
+      -
+        in: path
+        name: folder
+        description: 'The hashid of the folder.'
+        example: abc123
+        required: true
+        schema:
+          type: string
+      -
+        in: path
+        name: submission
+        description: 'The hashid of the submission.'
+        example: def456
+        required: true
+        schema:
+          type: string
+  /v1/uploader/settings:
+    get:
+      summary: 'Get Uploader Settings'
+      operationId: getUploaderSettings
+      description: "Returns the site-wide upload configuration: allowed MIME types, per-category type\nlists and allowed extensions, max file sizes, and subscriber/adult flags.\n\nThis is the canonical source for the **category** and **type** enumerations used by\nthe submission endpoints. Each entry in `categorySettings` exposes the integer\n`categoryId` and a `types` map of human label → integer type id. For reference, the\ncategory ids are: `10` Artwork, `20` Writing, `30` Photography, `40` Music,\n`50` Video, `60` 3D, `70` Game.\n\nTwo related enumerations are not returned here but are used by the submission\nendpoints — `rating` (content level): `0` Clean, `10` Mature, `20` Adult; and\n`privacy`: `1` Private, `2` Unlisted, `3` Public."
+      parameters: []
+      responses:
+        200:
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                example:
+                  mimes:
+                    image/jpeg:
+                      - jpg
+                      - jpeg
+                    image/png:
+                      - png
+                  categorySettings:
+                    -
+                      categoryName: Artwork
+                      categoryId: 10
+                      types:
+                        Drawing: 11
+                        Comic: 12
+                        Animation: 13
+                        Other: 19
+                      coverSupportedTypes:
+                        - 12
+                      allowedExtensions:
+                        - jpg
+                        - jpeg
+                        - png
+                        - gif
+                        - webp
+                      allowedCustomDownloadExtensions:
+                        - zip
+                    -
+                      categoryName: Writing
+                      categoryId: 20
+                      types:
+                        'Short Story': 21
+                        Book: 22
+                        Other: 29
+                      coverSupportedTypes:
+                        - 22
+                      allowedExtensions:
+                        - txt
+                        - html
+                      allowedCustomDownloadExtensions:
+                        - pdf
+                        - epub
+                  plusSubscribed: 'false'
+                  maxFileSizes:
+                    regular:
+                      content: 52428800
+                      thumbnail: 10485760
+                      cover: 10485760
+                    subscriber:
+                      content: 52428800
+                      thumbnail: 10485760
+                      cover: 10485760
+                  adult: 'false'
+                properties:
+                  mimes:
+                    type: object
+                    properties:
+                      image/jpeg:
+                        type: array
+                        example:
+                          - jpg
+                          - jpeg
+                        items:
+                          type: string
+                      image/png:
+                        type: array
+                        example:
+                          - png
+                        items:
+                          type: string
+                  categorySettings:
+                    type: array
+                    example:
+                      -
+                        categoryName: Artwork
+                        categoryId: 10
+                        types:
+                          Drawing: 11
+                          Comic: 12
+                          Animation: 13
+                          Other: 19
+                        coverSupportedTypes:
+                          - 12
+                        allowedExtensions:
+                          - jpg
+                          - jpeg
+                          - png
+                          - gif
+                          - webp
+                        allowedCustomDownloadExtensions:
+                          - zip
+                      -
+                        categoryName: Writing
+                        categoryId: 20
+                        types:
+                          'Short Story': 21
+                          Book: 22
+                          Other: 29
+                        coverSupportedTypes:
+                          - 22
+                        allowedExtensions:
+                          - txt
+                          - html
+                        allowedCustomDownloadExtensions:
+                          - pdf
+                          - epub
+                    description: 'One entry per category. Each has `categoryId` (10 Artwork, 20 Writing, 30 Photography, 40 Music, 50 Video, 60 3D, 70 Game) and a `types` map of label → integer type id.'
+                    items:
+                      type: object
+                      properties:
+                        categoryName:
+                          type: string
+                          example: Artwork
+                        categoryId:
+                          type: integer
+                          example: 10
+                        types:
+                          type: object
+                          properties:
+                            Drawing:
+                              type: integer
+                              example: 11
+                            Comic:
+                              type: integer
+                              example: 12
+                            Animation:
+                              type: integer
+                              example: 13
+                            Other:
+                              type: integer
+                              example: 19
+                        coverSupportedTypes:
+                          type: array
+                          example:
+                            - 12
+                          items:
+                            type: integer
+                        allowedExtensions:
+                          type: array
+                          example:
+                            - jpg
+                            - jpeg
+                            - png
+                            - gif
+                            - webp
+                          items:
+                            type: string
+                        allowedCustomDownloadExtensions:
+                          type: array
+                          example:
+                            - zip
+                          items:
+                            type: string
+                  plusSubscribed:
+                    type: string
+                    example: 'false'
+                  maxFileSizes:
+                    type: object
+                    properties:
+                      regular:
+                        type: object
+                        properties:
+                          content:
+                            type: integer
+                            example: 52428800
+                          thumbnail:
+                            type: integer
+                            example: 10485760
+                          cover:
+                            type: integer
+                            example: 10485760
+                      subscriber:
+                        type: object
+                        properties:
+                          content:
+                            type: integer
+                            example: 52428800
+                          thumbnail:
+                            type: integer
+                            example: 10485760
+                          cover:
+                            type: integer
+                            example: 10485760
+                  adult:
+                    type: string
+                    example: 'false'
+      tags:
+        - Site
+  /v1/statistics/global:
+    get:
+      summary: 'Get Global Statistics'
+      operationId: getGlobalStatistics
+      description: "Returns rounded public counts for uploads, content items, users, comments, statuses and total content views.\nAll values are rounded to the nearest 50."
+      parameters: []
+      responses:
+        200:
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                example:
+                  sampleTime: '2024-01-15T12:00:00.000000Z'
+                  uploadCountTotal: 1250000
+                  contentCountTotal: 1380000
+                  userCountTotal: 450000
+                  uploadCommentsCountTotal: 8750000
+                  statusCountTotal: 320000
+                  contentViewCountTotal: 250000000
+                  precision: 'All values rounded to nearest 50'
+                properties:
+                  sampleTime:
+                    type: string
+                    example: '2024-01-15T12:00:00.000000Z'
+                  uploadCountTotal:
+                    type: integer
+                    example: 1250000
+                  contentCountTotal:
+                    type: integer
+                    example: 1380000
+                  userCountTotal:
+                    type: integer
+                    example: 450000
+                  uploadCommentsCountTotal:
+                    type: integer
+                    example: 8750000
+                  statusCountTotal:
+                    type: integer
+                    example: 320000
+                  contentViewCountTotal:
+                    type: integer
+                    example: 250000000
+                  precision:
+                    type: string
+                    example: 'All values rounded to nearest 50'
+      tags:
+        - Statistics
+  /v1/submission:
+    put:
+      summary: 'Create Submission'
+      operationId: createSubmission
+      description: "Creates a new empty draft submission owned by the authenticated user and returns it.\nThe draft has no title, category or content yet — use the **Update Submission** and\n**Add File Content** / **Add Embed Content** endpoints to populate it, then set `privacy`\nto `3` (Public) via Update Submission to publish.\n\nTypical creation workflow:\n1. `PUT /v1/submission` — create the draft, note the returned `id`\n2. `POST /v1/submission/{id}/content` (file) or `/content/embed` — attach content\n3. `POST /v1/submission/{id}` — set title, category, rating, tags and privacy"
+      parameters: []
+      responses:
+        201:
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                example:
+                  id: abc123
+                  title: 'New Submission'
+                  description: null
+                  author: Terra
+                  category: null
+                  type: null
+                  rating: null
+                  status: 0
+                  privacy: 1
+                  content: []
+                  allowComments: true
+                  allowDownloads: true
+                  isWorkInProgress: false
+                  isAdvert: false
+                  optimize: true
+                  pixelPerfect: false
+                  onHold: false
+                  onHoldReason: null
+                  inReview: false
+                  thumbUrl: null
+                  coverUrl: null
+                  artistTags: []
+                  publishedAt: null
+                  importedFrom: null
+                  buyAtVendor: null
+                  buyAtUrl: null
+                  customDownloadUrl: null
+                  folders: []
+                properties:
+                  id:
+                    type: string
+                    example: abc123
+                  title:
+                    type: string
+                    example: 'New Submission'
+                  description:
+                    type: string
+                    example: null
+                    nullable: true
+                  author:
+                    type: string
+                    example: Terra
+                  category:
+                    type: string
+                    example: null
+                    nullable: true
+                  type:
+                    type: string
+                    example: null
+                    nullable: true
+                  rating:
+                    type: string
+                    example: null
+                    nullable: true
+                  status:
+                    type: integer
+                    example: 0
+                  privacy:
+                    type: integer
+                    example: 1
+                  content:
+                    type: array
+                    example: []
+                  allowComments:
+                    type: boolean
+                    example: true
+                  allowDownloads:
+                    type: boolean
+                    example: true
+                  isWorkInProgress:
+                    type: boolean
+                    example: false
+                  isAdvert:
+                    type: boolean
+                    example: false
+                  optimize:
+                    type: boolean
+                    example: true
+                  pixelPerfect:
+                    type: boolean
+                    example: false
+                  onHold:
+                    type: boolean
+                    example: false
+                  onHoldReason:
+                    type: string
+                    example: null
+                    nullable: true
+                  inReview:
+                    type: boolean
+                    example: false
+                  thumbUrl:
+                    type: string
+                    example: null
+                    nullable: true
+                  coverUrl:
+                    type: string
+                    example: null
+                    nullable: true
+                  artistTags:
+                    type: array
+                    example: []
+                  publishedAt:
+                    type: string
+                    example: null
+                    nullable: true
+                  importedFrom:
+                    type: string
+                    example: null
+                    nullable: true
+                  buyAtVendor:
+                    type: string
+                    example: null
+                    nullable: true
+                  buyAtUrl:
+                    type: string
+                    example: null
+                    nullable: true
+                  customDownloadUrl:
+                    type: string
+                    example: null
+                    nullable: true
+                  folders:
+                    type: array
+                    example: []
+        429:
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                example:
+                  statusCode: 429
+                  message: 'Too Many Requests'
+                  description: 'You have reached your upload limit.'
+                  errorCode: 429
+                properties:
+                  statusCode:
+                    type: integer
+                    example: 429
+                  message:
+                    type: string
+                    example: 'Too Many Requests'
+                  description:
+                    type: string
+                    example: 'You have reached your upload limit.'
+                  errorCode:
+                    type: integer
+                    example: 429
+      tags:
+        - Submissions
+  '/v1/submission/{id}':
+    get:
+      summary: 'Get Submission'
+      operationId: getSubmission
+      description: 'Returns the metadata and content list for a single submission identified by its hash ID.'
+      parameters: []
+      responses:
+        200:
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                example:
+                  id: abc123
+                  title: 'My Artwork'
+                  description: 'A beautiful piece of digital art.'
+                  author: Terra
+                  category: 10
+                  type: 11
+                  rating: 0
+                  status: 100
+                  privacy: 3
+                  content:
+                    -
+                      contentId: xyz789
+                      title: null
+                      description: null
+                      body:
+                        url: 'https://cdn.sofurry.com/...'
+                      position: 0
+                      type: file_submission
+                  allowComments: true
+                  allowDownloads: true
+                  isWorkInProgress: false
+                  isAdvert: false
+                  optimize: true
+                  pixelPerfect: false
+                  onHold: false
+                  onHoldReason: null
+                  inReview: false
+                  thumbUrl: 'https://t.sofurry.com/thumb/abc123'
+                  coverUrl: null
+                  artistTags:
+                    - dragon
+                    - 'digital art'
+                  publishedAt: '2024-01-15T12:00:00.000000Z'
+                  importedFrom: null
+                  buyAtVendor: null
+                  buyAtUrl: null
+                  customDownloadUrl: null
+                  folders: []
+                properties:
+                  id:
+                    type: string
+                    example: abc123
+                  title:
+                    type: string
+                    example: 'My Artwork'
+                  description:
+                    type: string
+                    example: 'A beautiful piece of digital art.'
+                  author:
+                    type: string
+                    example: Terra
+                  category:
+                    type: integer
+                    example: 10
+                    description: 'Category. One of: `10` Artwork, `20` Writing, `30` Photography, `40` Music, `50` Video, `60` 3D, `70` Game.'
+                  type:
+                    type: integer
+                    example: 11
+                    description: 'Type within the category. Artwork: `11` Drawing, `12` Comic, `13` Animation, `19` Other. Writing: `21` Short Story, `22` Book, `29` Other. Photography: `31` Photograph, `32` Album, `39` Other. Music: `41` Track, `42` Album, `49` Other. Video: `59` Other. 3D: `61` Model. Game: `79` Other. Generic: `69` Other.'
+                  rating:
+                    type: integer
+                    example: 0
+                    description: 'Content rating (content level). One of: `0` Clean, `10` Mature, `20` Adult.'
+                  status:
+                    type: integer
+                    example: 100
+                    description: 'Processing status. One of: `0` New, `10` Processing, `100` Processed.'
+                  privacy:
+                    type: integer
+                    example: 3
+                    description: 'Visibility. One of: `1` Private, `2` Unlisted, `3` Public.'
+                  content:
+                    type: array
+                    example:
+                      -
+                        contentId: xyz789
+                        title: null
+                        description: null
+                        body:
+                          url: 'https://cdn.sofurry.com/...'
+                        position: 0
+                        type: file_submission
+                    items:
+                      type: object
+                      properties:
+                        contentId:
+                          type: string
+                          example: xyz789
+                        title:
+                          type: string
+                          example: null
+                          nullable: true
+                        description:
+                          type: string
+                          example: null
+                          nullable: true
+                        body:
+                          type: object
+                          properties:
+                            url:
+                              type: string
+                              example: 'https://cdn.sofurry.com/...'
+                        position:
+                          type: integer
+                          example: 0
+                        type:
+                          type: string
+                          example: file_submission
+                  allowComments:
+                    type: boolean
+                    example: true
+                  allowDownloads:
+                    type: boolean
+                    example: true
+                  isWorkInProgress:
+                    type: boolean
+                    example: false
+                  isAdvert:
+                    type: boolean
+                    example: false
+                  optimize:
+                    type: boolean
+                    example: true
+                  pixelPerfect:
+                    type: boolean
+                    example: false
+                  onHold:
+                    type: boolean
+                    example: false
+                  onHoldReason:
+                    type: string
+                    example: null
+                    nullable: true
+                  inReview:
+                    type: boolean
+                    example: false
+                  thumbUrl:
+                    type: string
+                    example: 'https://t.sofurry.com/thumb/abc123'
+                  coverUrl:
+                    type: string
+                    example: null
+                    nullable: true
+                  artistTags:
+                    type: array
+                    example:
+                      - dragon
+                      - 'digital art'
+                    items:
+                      type: string
+                  publishedAt:
+                    type: string
+                    example: '2024-01-15T12:00:00.000000Z'
+                  importedFrom:
+                    type: string
+                    example: null
+                    nullable: true
+                  buyAtVendor:
+                    type: string
+                    example: null
+                    nullable: true
+                  buyAtUrl:
+                    type: string
+                    example: null
+                    nullable: true
+                  customDownloadUrl:
+                    type: string
+                    example: null
+                    nullable: true
+                  folders:
+                    type: array
+                    example: []
+        404:
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                example:
+                  statusCode: 404
+                  message: 'Not Found'
+                  description: 'The requested resource could not be found.'
+                  errorCode: 404
+                properties:
+                  statusCode:
+                    type: integer
+                    example: 404
+                  message:
+                    type: string
+                    example: 'Not Found'
+                  description:
+                    type: string
+                    example: 'The requested resource could not be found.'
+                  errorCode:
+                    type: integer
+                    example: 404
+      tags:
+        - Submissions
+    parameters:
+      -
+        in: path
+        name: id
+        description: 'The hash ID of the submission.'
+        example: abc123
+        required: true
+        schema:
+          type: string
+  '/v1/submission/{submission}':
+    post:
+      summary: 'Update Submission'
+      operationId: updateSubmission
+      description: 'Updates the metadata of an existing submission. The authenticated user must own the submission.'
+      parameters: []
+      responses:
+        200:
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                example:
+                  id: abc123
+                  title: 'My Updated Artwork'
+                  author: Terra
+                  category: 10
+                  type: 11
+                  rating: 0
+                  status: 100
+                  privacy: 3
+                  content: []
+                  allowComments: true
+                  allowDownloads: true
+                  isWorkInProgress: false
+                  isAdvert: false
+                  optimize: true
+                  pixelPerfect: false
+                  onHold: false
+                  onHoldReason: null
+                  inReview: false
+                  thumbUrl: 'https://t.sofurry.com/thumb/abc123'
+                  coverUrl: null
+                  artistTags:
+                    - dragon
+                    - art
+                  publishedAt: '2024-01-15T12:00:00.000000Z'
+                  importedFrom: null
+                  buyAtVendor: null
+                  buyAtUrl: null
+                  customDownloadUrl: null
+                  folders: []
+                properties:
+                  id:
+                    type: string
+                    example: abc123
+                  title:
+                    type: string
+                    example: 'My Updated Artwork'
+                  author:
+                    type: string
+                    example: Terra
+                  category:
+                    type: integer
+                    example: 10
+                    description: 'Category. One of: `10` Artwork, `20` Writing, `30` Photography, `40` Music, `50` Video, `60` 3D, `70` Game.'
+                  type:
+                    type: integer
+                    example: 11
+                    description: 'Type within the category (see **Get Uploader Settings** for the full list).'
+                  rating:
+                    type: integer
+                    example: 0
+                    description: 'Content rating (content level). One of: `0` Clean, `10` Mature, `20` Adult.'
+                  status:
+                    type: integer
+                    example: 100
+                    description: 'Processing status. One of: `0` New, `10` Processing, `100` Processed.'
+                  privacy:
+                    type: integer
+                    example: 3
+                    description: 'Visibility. One of: `1` Private, `2` Unlisted, `3` Public.'
+                  content:
+                    type: array
+                    example: []
+                  allowComments:
+                    type: boolean
+                    example: true
+                  allowDownloads:
+                    type: boolean
+                    example: true
+                  isWorkInProgress:
+                    type: boolean
+                    example: false
+                  isAdvert:
+                    type: boolean
+                    example: false
+                  optimize:
+                    type: boolean
+                    example: true
+                  pixelPerfect:
+                    type: boolean
+                    example: false
+                  onHold:
+                    type: boolean
+                    example: false
+                  onHoldReason:
+                    type: string
+                    example: null
+                    nullable: true
+                  inReview:
+                    type: boolean
+                    example: false
+                  thumbUrl:
+                    type: string
+                    example: 'https://t.sofurry.com/thumb/abc123'
+                  coverUrl:
+                    type: string
+                    example: null
+                    nullable: true
+                  artistTags:
+                    type: array
+                    example:
+                      - dragon
+                      - art
+                    items:
+                      type: string
+                  publishedAt:
+                    type: string
+                    example: '2024-01-15T12:00:00.000000Z'
+                  importedFrom:
+                    type: string
+                    example: null
+                    nullable: true
+                  buyAtVendor:
+                    type: string
+                    example: null
+                    nullable: true
+                  buyAtUrl:
+                    type: string
+                    example: null
+                    nullable: true
+                  customDownloadUrl:
+                    type: string
+                    example: null
+                    nullable: true
+                  folders:
+                    type: array
+                    example: []
+        403:
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                example:
+                  statusCode: 403
+                  message: Forbidden
+                  description: 'You do not have permission to edit this submission.'
+                  errorCode: 403
+                properties:
+                  statusCode:
+                    type: integer
+                    example: 403
+                  message:
+                    type: string
+                    example: Forbidden
+                  description:
+                    type: string
+                    example: 'You do not have permission to edit this submission.'
+                  errorCode:
+                    type: integer
+                    example: 403
+        404:
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                example:
+                  statusCode: 404
+                  message: 'Not Found'
+                  description: 'The requested resource could not be found.'
+                  errorCode: 404
+                properties:
+                  statusCode:
+                    type: integer
+                    example: 404
+                  message:
+                    type: string
+                    example: 'Not Found'
+                  description:
+                    type: string
+                    example: 'The requested resource could not be found.'
+                  errorCode:
+                    type: integer
+                    example: 404
+        422:
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                example:
+                  message: 'The given data was invalid.'
+                  errors:
+                    title:
+                      - 'The title field is required.'
+                properties:
+                  message:
+                    type: string
+                    example: 'The given data was invalid.'
+                  errors:
+                    type: object
+                    properties:
+                      title:
+                        type: array
+                        example:
+                          - 'The title field is required.'
+                        items:
+                          type: string
+      tags:
+        - Submissions
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                title:
+                  type: string
+                  description: 'The submission title.'
+                  example: 'My Updated Artwork'
+                category:
+                  type: integer
+                  description: 'Category. One of: `10` Artwork, `20` Writing, `30` Photography, `40` Music, `50` Video, `60` 3D, `70` Game.'
+                  example: 10
+                type:
+                  type: integer
+                  description: 'Type within the category (see **Get Uploader Settings** for the full list), e.g. `11` Drawing, `12` Comic, `21` Short Story.'
+                  example: 11
+                rating:
+                  type: integer
+                  description: 'Content rating. One of: `0` Clean, `10` Mature, `20` Adult.'
+                  example: 0
+                privacy:
+                  type: integer
+                  description: 'Visibility. One of: `1` Private, `2` Unlisted, `3` Public. Set to `3` to publish.'
+                  example: 3
+                allowComments:
+                  type: boolean
+                  description: 'Whether comments are allowed.'
+                  example: true
+                allowDownloads:
+                  type: boolean
+                  description: 'Whether downloads are allowed.'
+                  example: true
+                isWip:
+                  type: boolean
+                  description: 'Whether this is a work in progress.'
+                  example: false
+                optimize:
+                  type: boolean
+                  description: 'Whether to apply CDN optimizations.'
+                  example: true
+                pixelPerfect:
+                  type: boolean
+                  description: 'Disable lossy compression for pixel art.'
+                  example: false
+                isAdvert:
+                  type: boolean
+                  description: 'Whether this is an advertisement.'
+                  example: false
+                description:
+                  type: string
+                  description: 'nullable A description up to 2000 characters.'
+                  example: 'Updated description.'
+                  nullable: true
+                artistTags:
+                  type: array
+                  description: 'optional List of artist tags.'
+                  example:
+                    - dragon
+                    - art
+                  items:
+                    type: string
+                canPurchase:
+                  type: boolean
+                  description: 'Whether a purchase link is shown.'
+                  example: false
+                purchaseAtVendor:
+                  type: string
+                  description: 'Vendor name on the purchase button (required when `canPurchase` is true). This field is required when <code>canPurchase</code> is <code>true</code>.'
+                  example: Gumroad
+                  nullable: true
+                purchaseAtUrl:
+                  type: string
+                  description: 'Purchase URL (required when `canPurchase` is true). This field is required when <code>canPurchase</code> is <code>true</code>. Must be a valid URL.'
+                  example: 'https://gumroad.com/l/abc'
+                  nullable: true
+                contentOrder:
+                  type: array
+                  description: 'optional Ordered list of content hash IDs.'
+                  example:
+                    - xyz789
+                  items:
+                    type: string
+              required:
+                - title
+                - category
+                - type
+                - rating
+                - privacy
+                - allowComments
+                - allowDownloads
+                - isWip
+                - optimize
+                - pixelPerfect
+                - isAdvert
+    parameters:
+      -
+        in: path
+        name: submission
+        description: 'The hash ID of the submission to update.'
+        example: abc123
+        required: true
+        schema:
+          type: string
+  '/v1/submission/{submission}/content':
+    post:
+      summary: 'Add File Content'
+      operationId: addFileContent
+      description: "Uploads a file and attaches it as a new content item on the given submission.\nUse `multipart/form-data` encoding. The file extension determines the submission type\n(image, story, music, etc.) if one has not been set yet.\n\nAllowed extensions mirror the site upload settings — call **Get Uploader Settings** for the\ncurrent list."
+      parameters: []
+      responses:
+        201:
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                example:
+                  contentId: xyz789
+                  title: null
+                  description: 'Main illustration'
+                  body:
+                    url: 'https://cdn.sofurry.com/content/xyz789'
+                  position: 0
+                  type: file_submission
+                properties:
+                  contentId:
+                    type: string
+                    example: xyz789
+                  title:
+                    type: string
+                    example: null
+                    nullable: true
+                  description:
+                    type: string
+                    example: 'Main illustration'
+                  body:
+                    type: object
+                    properties:
+                      url:
+                        type: string
+                        example: 'https://cdn.sofurry.com/content/xyz789'
+                  position:
+                    type: integer
+                    example: 0
+                  type:
+                    type: string
+                    example: file_submission
+        403:
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                example:
+                  statusCode: 403
+                  message: Forbidden
+                  description: 'You do not have permission to add content to this submission.'
+                  errorCode: 403
+                properties:
+                  statusCode:
+                    type: integer
+                    example: 403
+                  message:
+                    type: string
+                    example: Forbidden
+                  description:
+                    type: string
+                    example: 'You do not have permission to add content to this submission.'
+                  errorCode:
+                    type: integer
+                    example: 403
+        404:
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                example:
+                  statusCode: 404
+                  message: 'Not Found'
+                  description: 'The requested resource could not be found.'
+                  errorCode: 404
+                properties:
+                  statusCode:
+                    type: integer
+                    example: 404
+                  message:
+                    type: string
+                    example: 'Not Found'
+                  description:
+                    type: string
+                    example: 'The requested resource could not be found.'
+                  errorCode:
+                    type: integer
+                    example: 404
+        422:
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                example:
+                  statusCode: 422
+                  message: 'Unprocessable Entity'
+                  description: 'File extension is not allowed'
+                  errorCode: 422
+                properties:
+                  statusCode:
+                    type: integer
+                    example: 422
+                  message:
+                    type: string
+                    example: 'Unprocessable Entity'
+                  description:
+                    type: string
+                    example: 'File extension is not allowed'
+                  errorCode:
+                    type: integer
+                    example: 422
+      tags:
+        - Submissions
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: 'The file to upload. Max size is determined by the site upload configuration.'
+                description:
+                  type: string
+                  description: 'nullable An optional short description for this content item.'
+                  example: 'Main illustration'
+                  nullable: true
+              required:
+                - file
+    parameters:
+      -
+        in: path
+        name: submission
+        description: 'The hash ID of the submission.'
+        example: abc123
+        required: true
+        schema:
+          type: string
+  '/v1/submission/{submission}/content/{submissionContent}':
+    post:
+      summary: 'Update Submission Content'
+      operationId: updateSubmissionContent
+      description: 'Replaces the body of a specific content item within a submission (e.g. text chapter, image). The authenticated user must own the submission.'
+      parameters: []
+      responses:
+        200:
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                example:
+                  contentId: xyz789
+                  title: 'Chapter One'
+                  description: 'The beginning.'
+                  body:
+                    text: 'Once upon a time...'
+                  position: 0
+                  type: file_submission
+                properties:
+                  contentId:
+                    type: string
+                    example: xyz789
+                  title:
+                    type: string
+                    example: 'Chapter One'
+                  description:
+                    type: string
+                    example: 'The beginning.'
+                  body:
+                    type: object
+                    properties:
+                      text:
+                        type: string
+                        example: 'Once upon a time...'
+                  position:
+                    type: integer
+                    example: 0
+                  type:
+                    type: string
+                    example: file_submission
+        403:
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                example:
+                  statusCode: 403
+                  message: Forbidden
+                  description: 'You do not have permission to edit this submission.'
+                  errorCode: 403
+                properties:
+                  statusCode:
+                    type: integer
+                    example: 403
+                  message:
+                    type: string
+                    example: Forbidden
+                  description:
+                    type: string
+                    example: 'You do not have permission to edit this submission.'
+                  errorCode:
+                    type: integer
+                    example: 403
+        404:
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                example:
+                  statusCode: 404
+                  message: 'Not Found'
+                  description: 'The requested resource could not be found.'
+                  errorCode: 404
+                properties:
+                  statusCode:
+                    type: integer
+                    example: 404
+                  message:
+                    type: string
+                    example: 'Not Found'
+                  description:
+                    type: string
+                    example: 'The requested resource could not be found.'
+                  errorCode:
+                    type: integer
+                    example: 404
+      tags:
+        - Submissions
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                title:
+                  type: string
+                  description: 'nullable A title for this content item.'
+                  example: 'Chapter One'
+                  nullable: true
+                description:
+                  type: string
+                  description: 'nullable A short description for this content item.'
+                  example: 'The beginning.'
+                  nullable: true
+                binary:
+                  type: string
+                  description: 'The raw content body (text or base64-encoded binary).'
+                  example: 'Once upon a time...'
+              required:
+                - binary
+    parameters:
+      -
+        in: path
+        name: submission
+        description: 'The hash ID of the submission.'
+        example: abc123
+        required: true
+        schema:
+          type: string
+      -
+        in: path
+        name: submissionContent
+        description: 'The hash ID of the content item to update.'
+        example: xyz789
+        required: true
+        schema:
+          type: string
+  '/v1/submission/{id}/content/{contentid}':
+    get:
+      summary: ''
+      operationId: getV1SubmissionIdContentContentid
+      description: ''
+      parameters: []
+      responses: {  }
+      tags:
+        - Submissions
+    parameters:
+      -
+        in: path
+        name: id
+        description: 'The ID of the submission.'
+        example: architecto
+        required: true
+        schema:
+          type: string
+      -
+        in: path
+        name: contentid
+        description: ''
+        example: architecto
+        required: true
+        schema:
+          type: string
+  '/v1/submission/{id}/content/{contentid}/binary':
+    get:
+      summary: ''
+      operationId: getV1SubmissionIdContentContentidBinary
+      description: ''
+      parameters: []
+      responses: {  }
+      tags:
+        - Submissions
+    parameters:
+      -
+        in: path
+        name: id
+        description: 'The ID of the submission.'
+        example: architecto
+        required: true
+        schema:
+          type: string
+      -
+        in: path
+        name: contentid
+        description: ''
+        example: architecto
+        required: true
+        schema:
+          type: string
+  '/v1/tags/suggest/{query}':
+    get:
+      summary: 'Get Tag Suggestions'
+      operationId: getTagSuggestions
+      description: "Returns a list of tag strings matching the given query prefix. Useful for auto-completing tag search fields.\nNon-alphanumeric characters (except spaces and underscores) are stripped from the query."
+      parameters: []
+      responses:
+        200:
+          description: ''
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  -
+                    description: ''
+                    type: array
+                    items:
+                      type: string
+                    example:
+                      - dragon
+                      - dragoness
+                      - dragon_art
+                  -
+                    description: 'No matches'
+                    type: array
+                    items:
+                      type: object
+                    example: []
+      tags:
+        - Tags
+    parameters:
+      -
+        in: path
+        name: query
+        description: 'The search prefix.'
+        example: drag
+        required: true
+        schema:
+          type: string
+  /v1/user:
+    post:
+      summary: ''
+      operationId: postV1User
+      description: ''
+      parameters: []
+      responses: {  }
+      tags:
+        - Users
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                username:
+                  type: string
+                  description: 'Display name, 4–50 characters. Must be at least 4 characters. Must not be greater than 50 characters.'
+                  example: Terra
+                headline:
+                  type: string
+                  description: 'Short profile tagline, max 50 characters. Must not be greater than 50 characters.'
+                  example: 'Digital artist'
+                  nullable: true
+                location:
+                  type: string
+                  description: 'Location string, max 10 characters. Must not be greater than 10 characters.'
+                  example: US
+                  nullable: true
+                show_birthdate:
+                  type: boolean
+                  description: 'Whether to display your birthdate publicly.'
+                  example: false
+                show_likes:
+                  type: boolean
+                  description: 'Whether to display your liked submissions publicly.'
+                  example: true
+                website_link:
+                  type: string
+                  description: 'Personal website URL. Must be a valid URL. Must not be greater than 255 characters.'
+                  example: 'https://example.com'
+                  nullable: true
+                website_title:
+                  type: string
+                  description: 'Display label for the website link, max 15 characters. Must not be greater than 15 characters.'
+                  example: 'My Site'
+                  nullable: true
+                donation_link:
+                  type: string
+                  description: 'Tip/donation URL (e.g. Ko-fi, Patreon). Must be a valid URL. Must not be greater than 255 characters.'
+                  example: 'https://ko-fi.com/terra'
+                  nullable: true
+                tab1:
+                  type: string
+                  description: 'Custom profile tab label, max 255 characters. Must not be greater than 255 characters.'
+                  example: Gallery
+                  nullable: true
+                avatar:
+                  type: string
+                  description: 'Avatar image file (JPEG/PNG/WebP). Max size set by site config.'
+                  example: null
+                header:
+                  type: string
+                  description: 'Profile header image file (JPEG/PNG/WebP), max 50 KB.'
+                  example: null
+                clear_header:
+                  type: string
+                  description: 'Set to `1` to remove the current header image.'
+                  example: '0'
+                  enum:
+                    - 0
+                    - 1
+                  nullable: true
+  /v1/user/me:
+    get:
+      summary: 'Get User'
+      operationId: getUser
+      description: "Returns the public profile for the given user handle. When `handle` is omitted the endpoint returns\nthe currently authenticated user's profile, which includes additional private fields."
+      parameters: []
+      responses:
+        200:
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                example:
+                  handle: Terra
+                  username: Terra
+                  hasPremium: true
+                  headline: 'Digital artist'
+                  about: 'Hi! I draw things.'
+                  commissionsOpen: false
+                  isStaff: false
+                  isAdult: true
+                  verified: true
+                  headerUrl: 'https://cdn.sofurry.com/header/...'
+                  avatarUrl: 'https://cdn.sofurry.com/avatar/...'
+                properties:
+                  handle:
+                    type: string
+                    example: Terra
+                  username:
+                    type: string
+                    example: Terra
+                  hasPremium:
+                    type: boolean
+                    example: true
+                  headline:
+                    type: string
+                    example: 'Digital artist'
+                  about:
+                    type: string
+                    example: 'Hi! I draw things.'
+                  commissionsOpen:
+                    type: boolean
+                    example: false
+                  isStaff:
+                    type: boolean
+                    example: false
+                  isAdult:
+                    type: boolean
+                    example: true
+                  verified:
+                    type: boolean
+                    example: true
+                  headerUrl:
+                    type: string
+                    example: 'https://cdn.sofurry.com/header/...'
+                  avatarUrl:
+                    type: string
+                    example: 'https://cdn.sofurry.com/avatar/...'
+        404:
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                example:
+                  statusCode: 404
+                  message: 'Not Found'
+                  description: 'The requested resource could not be found.'
+                  errorCode: 404
+                properties:
+                  statusCode:
+                    type: integer
+                    example: 404
+                  message:
+                    type: string
+                    example: 'Not Found'
+                  description:
+                    type: string
+                    example: 'The requested resource could not be found.'
+                  errorCode:
+                    type: integer
+                    example: 404
+      tags:
+        - Users
+    parameters:
+      -
+        in: path
+        name: handle
+        description: 'The user handle. Omit to return the authenticated user.'
+        example: Terra
+        required: true
+        schema:
+          type: string
+  '/v1/user/{handle}':
+    get:
+      summary: 'Get User'
+      operationId: getUser
+      description: "Returns the public profile for the given user handle. When `handle` is omitted the endpoint returns\nthe currently authenticated user's profile, which includes additional private fields."
+      parameters: []
+      responses:
+        200:
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                example:
+                  handle: Terra
+                  username: Terra
+                  hasPremium: true
+                  headline: 'Digital artist'
+                  about: 'Hi! I draw things.'
+                  commissionsOpen: false
+                  isStaff: false
+                  isAdult: true
+                  verified: true
+                  headerUrl: 'https://cdn.sofurry.com/header/...'
+                  avatarUrl: 'https://cdn.sofurry.com/avatar/...'
+                properties:
+                  handle:
+                    type: string
+                    example: Terra
+                  username:
+                    type: string
+                    example: Terra
+                  hasPremium:
+                    type: boolean
+                    example: true
+                  headline:
+                    type: string
+                    example: 'Digital artist'
+                  about:
+                    type: string
+                    example: 'Hi! I draw things.'
+                  commissionsOpen:
+                    type: boolean
+                    example: false
+                  isStaff:
+                    type: boolean
+                    example: false
+                  isAdult:
+                    type: boolean
+                    example: true
+                  verified:
+                    type: boolean
+                    example: true
+                  headerUrl:
+                    type: string
+                    example: 'https://cdn.sofurry.com/header/...'
+                  avatarUrl:
+                    type: string
+                    example: 'https://cdn.sofurry.com/avatar/...'
+        404:
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                example:
+                  statusCode: 404
+                  message: 'Not Found'
+                  description: 'The requested resource could not be found.'
+                  errorCode: 404
+                properties:
+                  statusCode:
+                    type: integer
+                    example: 404
+                  message:
+                    type: string
+                    example: 'Not Found'
+                  description:
+                    type: string
+                    example: 'The requested resource could not be found.'
+                  errorCode:
+                    type: integer
+                    example: 404
+      tags:
+        - Users
+    parameters:
+      -
+        in: path
+        name: handle
+        description: 'The user handle. Omit to return the authenticated user.'
+        example: Terra
+        required: true
+        schema:
+          type: string
+  '/v1/user/{handle}/submissions':
+    get:
+      summary: 'Get User Submissions'
+      operationId: getUserSubmissions
+      description: "Returns a paginated list of submissions for the given user. When the handle belongs to the authenticated\nuser, private submissions are included."
+      parameters: []
+      responses:
+        200:
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                example:
+                  data:
+                    -
+                      id: abc123
+                      title: 'My Artwork'
+                      author: Terra
+                      category: 10
+                      type: 11
+                      rating: 0
+                      thumbUrl: 'https://t.sofurry.com/thumb/abc123'
+                      publishedAt: '2024-01-15T12:00:00.000000Z'
+                  links:
+                    first: ...
+                    last: ...
+                    prev: null
+                    next: ...
+                  meta:
+                    current_page: 1
+                    last_page: 10
+                    per_page: 15
+                    total: 142
+                properties:
+                  data:
+                    type: array
+                    example:
+                      -
+                        id: abc123
+                        title: 'My Artwork'
+                        author: Terra
+                        category: 10
+                        type: 11
+                        rating: 0
+                        thumbUrl: 'https://t.sofurry.com/thumb/abc123'
+                        publishedAt: '2024-01-15T12:00:00.000000Z'
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                          example: abc123
+                        title:
+                          type: string
+                          example: 'My Artwork'
+                        author:
+                          type: string
+                          example: Terra
+                        category:
+                          type: integer
+                          example: 10
+                        type:
+                          type: integer
+                          example: 11
+                        rating:
+                          type: integer
+                          example: 0
+                        thumbUrl:
+                          type: string
+                          example: 'https://t.sofurry.com/thumb/abc123'
+                        publishedAt:
+                          type: string
+                          example: '2024-01-15T12:00:00.000000Z'
+                  links:
+                    type: object
+                    properties:
+                      first:
+                        type: string
+                        example: ...
+                      last:
+                        type: string
+                        example: ...
+                      prev:
+                        type: string
+                        example: null
+                        nullable: true
+                      next:
+                        type: string
+                        example: ...
+                  meta:
+                    type: object
+                    properties:
+                      current_page:
+                        type: integer
+                        example: 1
+                      last_page:
+                        type: integer
+                        example: 10
+                      per_page:
+                        type: integer
+                        example: 15
+                      total:
+                        type: integer
+                        example: 142
+        404:
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+                example:
+                  statusCode: 404
+                  message: 'Not Found'
+                  description: 'The requested resource could not be found.'
+                  errorCode: 404
+                properties:
+                  statusCode:
+                    type: integer
+                    example: 404
+                  message:
+                    type: string
+                    example: 'Not Found'
+                  description:
+                    type: string
+                    example: 'The requested resource could not be found.'
+                  errorCode:
+                    type: integer
+                    example: 404
+      tags:
+        - Users
+    parameters:
+      -
+        in: path
+        name: handle
+        description: 'The user handle.'
+        example: "Terra\n\nEach item is a full submission object (see **Get Submission**). The `category`,\n`type`, `rating`, `status` and `privacy` fields are integers — `category`: `10` Artwork,\n`20` Writing, `30` Photography, `40` Music, `50` Video, `60` 3D, `70` Game; `rating`:\n`0` Clean, `10` Mature, `20` Adult."
+        required: true
+        schema:
+          type: string

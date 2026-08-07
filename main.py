@@ -278,8 +278,8 @@ def _start_sf_poller():
 
     async def _scheduled_sf_poll():
         settings = config.get_settings()
-        if not settings.get("sf_username") or not settings.get("sf_password"):
-            logger.info("Scheduled SF poll skipped — no SoFurry credentials configured")
+        if not settings.get("sf_api_token"):
+            logger.info("Scheduled SF poll skipped — no SoFurry API token configured")
             return
         try:
             await _poll_platform_accounts("sf", run_sf_poll_cycle)

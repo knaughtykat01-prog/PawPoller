@@ -11656,12 +11656,10 @@ const App = {
                         <span id="sf-msg" style="font-size:13px"></span>
                     </div>
                     ` : `
-                    <p style="color:var(--text-muted);font-size:13px;margin-bottom:12px">Connect your SoFurry account using your <strong>email address</strong>, password, and <strong>display name</strong> (your profile name, e.g. "KnaughtyKat").</p>
+                    <p style="color:var(--text-muted);font-size:13px;margin-bottom:12px">SoFurry now has an official API, so PawPoller no longer needs (or stores) your password. Create a <strong>Personal Access Token</strong> and paste it below — your profile name is read from the token automatically.</p>
+                    <p style="font-size:13px;margin-bottom:12px"><a href="${Utils.escapeHtml(sfAuth.token_url || 'https://sofurry.com/settings/pat-create')}?name=PawPoller&description=Posting%20and%20analytics%20via%20PawPoller" target="_blank" rel="noopener noreferrer">Create a token on SoFurry &rarr;</a> <span style="color:var(--text-muted)">(Settings &rarr; Developer &rarr; New token)</span></p>
                     <div style="display:flex;flex-direction:column;gap:8px;max-width:400px">
-                        <input type="email" id="sf-username" class="search-input" placeholder="SoFurry email address">
-                        <input type="password" id="sf-password" class="search-input" placeholder="SoFurry password">
-                        <input type="text" id="sf-display-name" class="search-input" placeholder="Display name (profile name)">
-                        <input type="text" id="sf-totp" class="search-input" placeholder="2FA code (if enabled)" maxlength="6" inputmode="numeric" autocomplete="one-time-code" style="max-width:160px">
+                        <input type="password" id="sf-api-token" class="search-input" placeholder="Paste your SoFurry Personal Access Token" autocomplete="off">
                     </div>
                     <div style="margin-top:12px;display:flex;align-items:center;gap:8px">
                         <button class="btn btn-primary" id="sf-connect-btn">Connect</button>
@@ -13619,12 +13617,9 @@ const App = {
             if (sfConnectBtn) {
                 sfConnectBtn.addEventListener('click', async () => {
                     const msg = document.getElementById('sf-msg');
-                    const username = document.getElementById('sf-username').value.trim();
-                    const password = document.getElementById('sf-password').value;
-                    const display_name = (document.getElementById('sf-display-name')?.value || '').trim();
-                    const totp_code = (document.getElementById('sf-totp')?.value || '').trim();
-                    if (!username || !password || !display_name) {
-                        msg.textContent = 'Email, password, and display name are required';
+                    const api_token = (document.getElementById('sf-api-token')?.value || '').trim();
+                    if (!api_token) {
+                        msg.textContent = 'Paste your SoFurry Personal Access Token';
                         msg.style.color = 'var(--danger)';
                         return;
                     }
@@ -13632,7 +13627,7 @@ const App = {
                     sfConnectBtn.textContent = 'Connecting...';
                     msg.textContent = '';
                     try {
-                        await API.sfConnect({ username, password, display_name, totp_code });
+                        await API.sfConnect({ api_token });
                         msg.textContent = 'Connected!';
                         msg.style.color = 'var(--success)';
                         setTimeout(() => this.renderSettings(), 1000);

@@ -24,7 +24,7 @@ from database.db import get_connection
 from database import sf_queries
 from polling.sf_poller import run_sf_poll_cycle, sf_poll_progress
 from polling.background import spawn
-from clients.sf.client import SoFurryClient
+from clients.sf.client import SoFurryClient, SOFURRY_PAT_URL
 import config
 
 logger = logging.getLogger(__name__)
@@ -35,9 +35,9 @@ sf_router = APIRouter(prefix="/api/sf")
 
 @sf_router.get("/auth/status")
 def sf_auth_status():
-    """Check whether SoFurry credentials exist and whether there is any SF data."""
+    """Check whether a SoFurry API token exists and whether there is any SF data."""
     settings = config.get_settings()
-    has_credentials = bool(settings.get("sf_username")) and bool(settings.get("sf_password"))
+    has_credentials = bool(settings.get("sf_api_token"))
     has_data = False
     conn = get_connection()
     try:
@@ -50,76 +50,71 @@ def sf_auth_status():
     return {
         "has_credentials": has_credentials,
         "has_data": has_data,
-        "username": settings.get("sf_display_name", "") or settings.get("sf_username", ""),
+        "username": settings.get("sf_display_name", ""),
+        "token_url": SOFURRY_PAT_URL,
     }
 
 
 @sf_router.post("/auth/connect")
 async def sf_connect(body: dict):
-    """Validate SoFurry credentials by attempting login.
+    """Validate a SoFurry Personal Access Token and save it.
 
-    Auth flow:
-      1. Receive email + password + optional TOTP code from the frontend
-      2. Create a temporary SoFurryClient and attempt login (with 2FA if needed)
-      3. If login succeeds, save credentials + display name to settings.json
-      4. Enable SF notifications by default
+    3.4.0: SoFurry shipped an official API, so this no longer takes an email,
+    password or 2FA code — none of which PawPoller stores any more. The user
+    creates a token at ``sofurry.com/settings/pat-create`` and pastes it here.
+
+    The handle is not asked for either: ``GET /v1/user/me`` returns the canonical
+    one, so it is derived from the token rather than typed (and therefore cannot
+    be mistyped, which used to produce a recurring "could not verify display name"
+    warning on every poll cycle).
     """
-    username = body.get("username", "").strip()  # email address
-    password = body.get("password", "").strip()
-    totp_code = body.get("totp_code", "").strip()
-    display_name = body.get("display_name", "").strip()
+    api_token = (body.get("api_token") or body.get("token") or "").strip()
+    if not api_token:
+        raise HTTPException(
+            400,
+            "A SoFurry Personal Access Token is required — create one at "
+            f"{SOFURRY_PAT_URL}",
+        )
 
-    if not username or not password:
-        raise HTTPException(400, "Email and password are required")
-    if not display_name:
-        raise HTTPException(400, "Display name is required (your SoFurry profile name)")
-
-    # Validate against the persistent singleton so a successful login
-    # leaves a live session in place (with SF's session cookies cached)
-    # for the next poll cycle and any subsequent imports to reuse.
+    # Validate against the persistent singleton so the poller reuses this client.
     from polling.sf_poller import _get_or_create_client
-    overlay = {
-        **config.get_settings(),
-        "sf_username": username,
-        "sf_password": password,
-        "sf_display_name": display_name,
-    }
-    # SF resolves creds from the overlay; is_default=True makes account_id
-    # irrelevant to the settings-key lookup, so 0 is a safe placeholder for
-    # the default-account connect/validate flow.
+    overlay = {**config.get_settings(), "sf_api_token": api_token}
+    # is_default=True makes account_id irrelevant to the settings-key lookup,
+    # so 0 is a safe placeholder for the default-account connect flow.
     client = _get_or_create_client(overlay, 0, True)
-    # TOTP code is request-scoped — it's not in settings, so apply it
-    # directly. The singleton accessor doesn't know about it.
-    if totp_code:
-        client.totp_code = totp_code
-    cookie_data = None
     try:
-        display_name = await client.validate_session()
-        if display_name:
-            cookie_data = client.export_cookies()
+        display_name = await client.validate_token()
     except Exception as e:
-        raise HTTPException(502, f"Failed to validate credentials: {e}")
+        raise HTTPException(502, f"Failed to validate token: {e}")
 
     if not display_name:
-        raise HTTPException(401, "Login failed — check your email, password, and 2FA code.")
+        raise HTTPException(
+            401,
+            "SoFurry rejected that token. Check you pasted it whole, and that it "
+            "has not been revoked or expired.",
+        )
 
-    save_data = {
-        "sf_username": username,
-        "sf_password": password,
+    config.save_settings({
+        "sf_api_token": api_token,
         "sf_display_name": display_name,
         "sf_notifications_enabled": True,
-    }
-    if cookie_data:
-        save_data["sf_session_cookies"] = cookie_data
-    config.save_settings(save_data)
+    })
 
     return {"status": "success", "message": f"Connected as {display_name}"}
 
 
 @sf_router.post("/auth/disconnect")
 def sf_disconnect():
-    """Clear SoFurry credentials from settings."""
-    config.delete_settings_keys(["sf_username", "sf_password", "sf_display_name", "sf_session_cookies"])
+    """Clear the SoFurry token from settings.
+
+    Also clears the pre-3.4.0 login fields, so disconnecting scrubs a vault that
+    the startup migration has not run against yet.
+    """
+    config.delete_settings_keys([
+        "sf_api_token", "sf_display_name",
+        # legacy, pre-3.4.0
+        "sf_username", "sf_password", "sf_totp_code", "sf_session_cookies",
+    ])
     config.save_settings({"sf_notifications_enabled": False})
     return {"status": "success", "message": "SoFurry disconnected"}
 

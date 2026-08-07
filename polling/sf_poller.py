@@ -4,8 +4,9 @@ Mirrors the Weasyl poller pattern (polling/ws_poller.py) since SoFurry has
 similar data availability: views, likes, and comment counts only.
 
 Key differences:
-  - Authentication via email/password login (not API key)
-  - Data collected by scraping web pages (not API calls)
+  - Authentication via a Personal Access Token on SoFurry's official API (3.4.0)
+  - Gallery listing comes from the official API; per-submission STATS do not exist
+    there at all, so those are read from login-free JSON on sofurry.com
   - Submission IDs are alphanumeric strings (not integers)
   - No individual comment or fave-user tracking
 """
@@ -135,35 +136,20 @@ def _get_or_create_client(settings: dict, account_id: int, is_default: bool) -> 
     """
     global _sf_client
     creds = config.resolve_account_credentials("sf", account_id, is_default, settings)
-    sf_user = creds.get("sf_username", "")
-    sf_pass = creds.get("sf_password", "")
+    sf_token = creds.get("sf_api_token", "")
     sf_display = creds.get("sf_display_name", "")
-    # TOTP is a transient login code, not a stored per-account credential.
-    sf_totp = settings.get("sf_totp_code", "")
-    cookies_key = config.account_setting_key(account_id, "sf_session_cookies", is_default)
 
     from polling.cf_proxy import proxy_kwargs
     sf_proxy = proxy_kwargs(settings, "sf")
 
     if _sf_client is None:
         _sf_client = SoFurryClient(
-            username=sf_user,
-            password=sf_pass,
+            api_token=sf_token,
             display_name=sf_display,
-            totp_code=sf_totp,
             **sf_proxy,
         )
-        # Restore saved session cookies (if any) to skip login.
-        # Only useful when NOT using the CF proxy (direct login).
-        if not sf_proxy:
-            saved_cookies = creds.get("sf_session_cookies")
-            if saved_cookies:
-                _sf_client.import_cookies(saved_cookies)
     else:
-        changed = _sf_client.update_credentials(sf_user, sf_pass, sf_display, sf_totp)
-        if changed:
-            config.delete_settings_keys([cookies_key])
-            logger.info("SF credentials changed -- cleared saved session cookies")
+        _sf_client.update_credentials(sf_token, sf_display)
 
     return _sf_client
 
@@ -212,25 +198,21 @@ async def run_sf_poll_cycle(account_id: int | None = None, force_full: bool = Fa
     try:
         conn = get_connection()
         log_id = sf_queries.start_sf_poll_log(conn, account_id)
-        # Step 1+2: Login and fetch gallery.
-        # When using the CF Worker proxy, login + gallery happen in one
-        # Worker invocation (x-proxy-login) to avoid IP rotation breaking
-        # SoFurry's IP-pinned sessions.
-        _update_sf_progress("searching", message="Discovering + fetching gallery...")
-        # Per-submission stats are fetched login-free from /s/{id}.data, so we
-        # always poll the submission IDs already in the DB. Discovery of NEW works
-        # needs an authenticated gallery (the unauthenticated one is SFW-filtered).
-        # Attempt the OAuth auth bridge best-effort — it needs creds + a
-        # non-blocked IP; on failure we fall back to the SFW gallery, and DB-known
-        # ids still poll, so the cycle never fails on this.
+        # Step 1+2: list the gallery via the official API.
+        # 3.4.0: this used to scrape /u/{handle}/gallery.data and hand the poller
+        # unvalidated 8-char "candidate" ids, and an unauthenticated request there
+        # was SFW-filtered so an adult gallery yielded nothing. The official
+        # /v1/user/{handle}/submissions returns the real list, private works
+        # included. Per-submission STATS still come from the login-free JSON
+        # endpoint (the official API exposes none), so DB-known ids are still polled
+        # regardless — a listing failure degrades discovery, never the whole cycle.
+        _update_sf_progress("searching", message="Listing gallery via the SoFurry API...")
         try:
-            await client._ensure_api_session()
-        except Exception as auth_err:
-            logger.info(
-                "SF: discovery auth unavailable (%s) — using SFW gallery + DB-known ids",
-                auth_err,
-            )
-        gallery = await client.get_all_gallery_ids()
+            gallery = await client.get_all_gallery_ids()
+        except Exception as list_err:
+            logger.warning(
+                "SF: gallery listing failed (%s) — polling DB-known ids only", list_err)
+            gallery = []
         discovered = [s["submission_id"] for s in gallery]
         known = [r["submission_id"] for r in sf_queries.get_all_sf_submissions(conn)]
         submission_ids = list(dict.fromkeys(discovered + known))  # de-dup, keep order
@@ -238,15 +220,7 @@ async def run_sf_poll_cycle(account_id: int | None = None, force_full: bool = Fa
         logger.info("SF: %d submissions to poll (%d discovered, %d known)",
                     len(submission_ids), len(discovered), len(known))
 
-        # Persist session cookies after a successful authenticated gallery fetch.
-        # Only useful for direct login (not CF proxy, which rotates IPs).
-        if not settings.get("cf_worker_url"):
-            cookie_data = client.export_cookies()
-            if cookie_data:
-                config.save_settings({
-                    config.account_setting_key(account_id, "sf_session_cookies", is_default): cookie_data
-                })
-                logger.info("SF: Saved session cookies for account %s", account_id)
+        # (3.4.0: no session cookies to persist — a PAT never logs in.)
 
         if not submission_ids:
             _update_sf_progress("complete", message="No SoFurry submissions found.")
@@ -270,13 +244,22 @@ async def run_sf_poll_cycle(account_id: int | None = None, force_full: bool = Fa
                 sub_id = detail["submission_id"]
                 views = detail.get("views", 0)
                 faves = detail.get("favorites_count", 0)
-                comments = detail.get("comments_count", 0)
 
-                # Reject discovery false-positives: a newly-discovered id that
-                # doesn't resolve to a titled submission (e.g. a gallery FOLDER id,
-                # which 404s on /s/{id}.data → empty title) must not be persisted as
-                # a junk 0-view row. Known works keep their row (the views==0 guard
-                # below handles their transient failures).
+                # comments_count is None when the count could not be read (it comes
+                # from a separate payload to views/likes — see the client). Writing 0
+                # would look like every comment was deleted, and the next successful
+                # poll would then re-report them all as new. Carry the previous value
+                # forward instead.
+                comments = detail.get("comments_count")
+                if comments is None:
+                    comments = sf_queries.get_sf_previous_comments_count(conn, sub_id) or 0
+                    logger.debug("SF: comment count unavailable for %s — kept %d",
+                                 sub_id, comments)
+
+                # Reject discovery false-positives: an id that doesn't resolve to a
+                # titled submission must not be persisted as a junk 0-view row.
+                # Known works keep their row (the views==0 guard below handles their
+                # transient failures).
                 if not (detail.get("title") or "").strip():
                     if not sf_queries.get_sf_submission(conn, sub_id):
                         logger.warning(
@@ -286,9 +269,9 @@ async def run_sf_poll_cycle(account_id: int | None = None, force_full: bool = Fa
                         )
                         continue
 
-                # Skip transient scrape failures: SF views are cumulative and
-                # never drop, so a scraped 0 when the DB already holds a non-zero
-                # count means the /s/{id}.data fetch failed, not a real reset.
+                # Skip transient fetch failures: SF views are cumulative and
+                # never drop, so a fetched 0 when the DB already holds a non-zero
+                # count means the stats request failed, not a real reset.
                 # Persisting it would corrupt the baseline and inflate the next
                 # digest/milestone delta (the AO3/FA zero-snapshot class of bug).
                 if views == 0:

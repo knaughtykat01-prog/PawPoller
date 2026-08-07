@@ -49,7 +49,7 @@ def _configured(code: str, s: dict) -> bool:
     if code == "ao3":
         return bool((s.get("ao3_username") and s.get("ao3_password")) or s.get("ao3_session_cookie"))
     if code == "sf":
-        return bool(s.get("sf_username") and s.get("sf_password"))
+        return bool(s.get("sf_api_token"))
     if code == "sqw":
         return bool(s.get("sqw_username") and s.get("sqw_password"))
     if code == "bsky":

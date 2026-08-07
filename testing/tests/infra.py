@@ -239,7 +239,7 @@ async def t_credentials_visible(ctx: TestContext) -> None:
         "username", "password",                       # IB
         "fa_cookie_a", "fa_cookie_b",                 # FA
         "ws_api_key",                                 # WS
-        "sf_username", "sf_password",                 # SF
+        "sf_api_token",                               # SF
         "sqw_username", "sqw_password",               # SqW
         "ao3_username", "ao3_session_cookie",         # AO3
         "da_cookie",                                  # DA

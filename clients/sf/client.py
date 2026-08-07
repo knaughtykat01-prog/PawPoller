@@ -1,25 +1,39 @@
-"""SoFurry client using web scraping for gallery and submission data.
+"""SoFurry client — official API v1 for writes, login-free JSON reads for analytics.
 
-SoFurry's new platform ("SoFurry Next") does not offer API key generation,
-despite having had a public API in the past.  This client authenticates via
-email/password to obtain session cookies, then scrapes the web interface for
-submission data.
+**3.4.0 rewrite.** SoFurry shipped an official public API (``https://api.sofurry.com``,
+docs at ``developer.sofurry.com/dev-docs``) authenticated with a **Personal Access
+Token**. That replaced the entire reverse-engineered auth stack this client used to
+carry: the Laravel ``/login`` form scrape, the OAuth2-PKCE bridge through
+``/fe/auth/sofurry`` that minted a Remix ``_session``, the ``X-CSRF-Token`` threading,
+the cookie import/export, and the unhandled-2FA dead end. All of it is gone — a PAT
+never logs in, so there is no session to establish, refresh, or lose.
 
-Authentication flow:
-  1. GET /login to extract CSRF _token
-  2. POST /login with _token, email, password
-  3. On success, SoFurry sets session cookies in the response
-  4. All subsequent requests use those cookies automatically (httpx cookie jar)
+Two surfaces, deliberately:
 
-Data collection:
-  - Gallery listing: scrape /u/{display_name}/gallery for submission IDs
-  - Submission metadata: GET /ui/submission/{id} (JSON API)
-  - Submission stats (views/likes): scrape /s/{id} web page
-  - No individual comment text available (count only, like Weasyl)
-  - No faving-user lists available (count only)
+* ``self._api`` → **https://api.sofurry.com** with ``Authorization: Bearer <PAT>``.
+  Everything that WRITES, plus the authoritative gallery listing.
+* ``self._web`` → **https://sofurry.com**, no auth at all. Everything that READS
+  ANALYTICS, because the official API returns **no statistics whatsoever** (verified
+  against the prose docs, the OpenAPI schema, and live responses — see
+  ``docs/reference/sofurry_beta_api_map.md``). These endpoints serve published works
+  anonymously, including Adult ones, which is why dropping the login costs nothing.
 
-Important: SoFurry defaults to showing NSFW content after login.
-Do NOT call GET /sfw — that toggles SFW mode ON, hiding Adult submissions.
+Gotchas that cost real debugging (all recorded in the API map):
+
+* ``Accept: application/json`` is **mandatory** on the official API. Without it an
+  unauthenticated call 302s to ``sofurry.com/login`` with an HTML body instead of
+  returning a JSON error.
+* **HTTP status and body ``statusCode`` disagree.** An unsupported method returns
+  **HTTP 500** carrying ``{"statusCode": 400}``. Never branch on the HTTP status alone.
+* **Content cannot be deleted.** ``DELETE`` is unsupported on both the submission and
+  content routes, and Laravel ``_method`` spoofing does not help. Content is therefore
+  **replaced in place** via ``update_content``; see its docstring.
+* Uploaded files must be **>= 1 KB** (``"The file must be between 1 and 512000
+  kilobytes."``), so ``maxFileSizes`` is in KB.
+* The API is rate limited to **60 requests/minute** (``x-ratelimit-limit``), which is
+  undocumented.
+* ``api.sofurry.com`` is **IP-blocked from datacenter ranges** (the GCP VM gets a
+  Cloudflare 403), so the proxy transport applies to BOTH surfaces — see ``__init__``.
 """
 
 from __future__ import annotations
@@ -37,24 +51,31 @@ import config
 logger = logging.getLogger(__name__)
 
 SOFURRY_BASE = "https://sofurry.com"
-SOFURRY_API = f"{SOFURRY_BASE}/api"
+SOFURRY_API = f"{SOFURRY_BASE}/api"           # internal (anonymous reads only)
+SOFURRY_API_V1 = "https://api.sofurry.com"    # official (PAT)
 
-# SoFurry rating codes (from the submission JSON)
+# Where a user creates a token. Surfaced in the dashboard's Connect panel.
+SOFURRY_PAT_URL = f"{SOFURRY_BASE}/settings/pat-create"
+
+# SoFurry rating codes (unchanged by the API migration)
 _RATING_MAP = {10: "Clean", 20: "Adult"}
 _RATING_REVERSE = {"clean": 0, "mature": 10, "adult": 20}
 
-# SoFurry "beta" write-encoding: the create/editor API wants INT category/type
-# codes, while the read API (/api/submission/{id}) echoes display strings. These
-# map the read strings back to the int codes for round-tripping on edit.
-# (PawPoller only ever posts Writing; the rest are here for completeness.)
+# The official API takes INT category/type codes on write and echoes ints back on
+# read — unlike the internal Remix API, which echoed display strings ("writing",
+# "shortstory"). Both directions are mapped so a value from either surface round-trips.
 _SF_CATEGORY_STR_TO_INT = {
     "writing": 20, "artwork": 10, "photography": 30,
     "music": 40, "video": 50, "3d": 60, "game": 70,
 }
 _SF_TYPE_STR_TO_INT = {
-    "shortstory": 21, "book": 29, "drawing": 11, "comic": 12,
-    "animation": 13, "photograph": 31, "track": 42, "album": 49,
+    "shortstory": 21, "book": 22, "drawing": 11, "comic": 12,
+    "animation": 13, "photograph": 31, "track": 41, "album": 42,
 }
+
+# SoFurry's documented content-file floor. Enforced server-side with a 422; checked
+# here so the caller gets a clear error instead of a validation blob.
+SF_MIN_CONTENT_BYTES = 1024
 
 
 def _normalize_rating(val) -> int:
@@ -66,25 +87,39 @@ def _normalize_rating(val) -> int:
     return 0
 
 
+class SoFurryError(RuntimeError):
+    """An official-API call failed. Carries the parsed body when there is one."""
+
+    def __init__(self, message: str, status: int = 0, body: dict | None = None):
+        super().__init__(message)
+        self.status = status
+        self.body = body or {}
+
+
 class SoFurryClient:
-    """SoFurry web scraping client using session cookie authentication."""
+    """SoFurry client: PAT for writes, anonymous JSON for analytics."""
 
-    def __init__(self, username: str = "", password: str = "", totp_code: str = "",
-                 display_name: str = "", proxy_url: str = "", proxy_key: str = ""):
-        self.username = username          # email address used for login
-        self.password = password
-        self.totp_code = totp_code
-        self.display_name = display_name  # SF profile handle (e.g. "KnaughtyKat")
+    def __init__(self, api_token: str = "", display_name: str = "",
+                 proxy_url: str = "", proxy_key: str = ""):
+        self.api_token = (api_token or "").strip()
+        self.display_name = (display_name or "").lstrip("@").strip()
 
-        # Use Cloudflare Worker proxy if configured (bypasses datacenter IP blocks)
+        # SoFurry blocks datacenter IPs across *every* host it owns — sofurry.com
+        # AND api.sofurry.com both return a Cloudflare 403 from the GCP VM, while a
+        # residential IP gets a normal response. So both surfaces need the proxy;
+        # routing only the scrape half would work on the desktop and fail on the
+        # server. (The transport forwards any target via x-target-url, so one
+        # transport class serves both hosts.)
+        def _transport():
+            if proxy_url and proxy_key:
+                from polling.cf_proxy import CloudflareProxyTransport
+                return CloudflareProxyTransport(proxy_url, proxy_key)
+            return httpx.AsyncHTTPTransport(retries=2)
+
         if proxy_url and proxy_key:
-            from polling.cf_proxy import CloudflareProxyTransport
-            transport = CloudflareProxyTransport(proxy_url, proxy_key)
-            logger.info("SoFurry client using CF proxy: %s", proxy_url)
-        else:
-            transport = httpx.AsyncHTTPTransport(retries=2)
+            logger.info("SoFurry client using CF proxy for both web + api: %s", proxy_url)
 
-        self._http = httpx.AsyncClient(
+        self._web = httpx.AsyncClient(
             timeout=30.0,
             follow_redirects=True,
             headers={
@@ -93,9 +128,31 @@ class SoFurryClient:
                 "Accept-Language": "en-US,en;q=0.5",
                 "Referer": "https://sofurry.com/",
             },
-            transport=transport,
+            transport=_transport(),
         )
-        self._logged_in = False
+        self._api = httpx.AsyncClient(
+            base_url=SOFURRY_API_V1,
+            timeout=60.0,
+            follow_redirects=False,
+            headers=self._api_headers(),
+            transport=_transport(),
+        )
+
+    def _api_headers(self) -> dict:
+        """Headers for the official API.
+
+        ``Accept: application/json`` is not optional — without it an unauthenticated
+        call 302s to the login page with an HTML body rather than returning a JSON
+        error, and the client would read the redirect as something other than a
+        credential failure.
+        """
+        h = {
+            "Accept": "application/json",
+            "User-Agent": "PawPoller (+https://github.com/knaughtykat01-prog/PawPoller)",
+        }
+        if self.api_token:
+            h["Authorization"] = f"Bearer {self.api_token}"
+        return h
 
     async def __aenter__(self):
         return self
@@ -104,459 +161,196 @@ class SoFurryClient:
         await self.close()
 
     async def close(self) -> None:
-        await self._http.aclose()
+        await self._web.aclose()
+        await self._api.aclose()
 
-    # -- Authentication ------------------------------------------------
+    # -- Credentials ---------------------------------------------------
 
-    async def login(self) -> bool:
-        """Authenticate via email/password (+ optional TOTP 2FA).
-
-        SoFurry uses Laravel with CSRF protection.  Login flow:
-          1. GET /login to obtain the CSRF _token from a hidden form field
-          2. POST /login with _token, email, password
-          3. If 2FA is enabled the server redirects to /auth/2fa — we then
-             submit the TOTP code from ``self.totp_code`` (set by caller)
-          4. On success the server redirects to / (home)
-
-        Note: when using the CF Worker proxy, use ``login_and_fetch_gallery``
-        instead — it does GET/POST/gallery in one Worker invocation to avoid
-        IP rotation breaking the session.
-        """
-        if not self.username or not self.password:
-            return False
-        try:
-            # Step 1: Fetch CSRF token from the login page
-            login_page = await self._http.get(f"{SOFURRY_BASE}/login")
-            csrf_match = re.search(
-                r'name="_token"\s*value="([^"]+)"', login_page.text
-            )
-            if not csrf_match:
-                logger.error("SoFurry: Could not find CSRF token on login page")
-                return False
-            csrf_token = csrf_match.group(1)
-
-            # Step 2: POST credentials with CSRF token
-            resp = await self._http.post(
-                f"{SOFURRY_BASE}/login",
-                data={
-                    "_token": csrf_token,
-                    "email": self.username,
-                    "password": self.password,
-                    "remember": "on",
-                },
-            )
-            final_url = resp.headers.get("x-final-url", str(resp.url))
-            page_text = resp.text
-            final_path = final_url.split("sofurry.com")[-1] if "sofurry.com" in final_url else final_url
-
-            logger.info("SoFurry login — final URL: %s (status %s)", final_url, resp.status_code)
-
-            # Step 3: Handle 2FA if redirected to /auth/2fa
-            if "/auth/2fa" in final_path or "2fa" in final_path:
-                if not self.totp_code:
-                    logger.warning("SoFurry 2FA required but no TOTP code provided")
-                    return False
-                return await self._submit_2fa(page_text)
-
-            # Success: ended up anywhere other than /login
-            if "/login" not in final_path:
-                self._logged_in = True
-                logger.info("SoFurry login successful for %s", self.username)
-                return True
-
-            # Landed on /login — login failed
-            if "credentials" in page_text.lower() or "invalid" in page_text.lower():
-                logger.warning("SoFurry login failed — invalid credentials")
-            else:
-                logger.warning("SoFurry login failed — redirected back to login page")
-            return False
-        except Exception as e:
-            logger.warning("SoFurry login failed: %s", e)
-            return False
-
-    async def login_and_fetch_gallery(self) -> str | None:
-        """Login + fetch gallery in a single CF Worker invocation.
-
-        Uses the Worker's x-proxy-login mode which does GET /login →
-        extract CSRF → POST /login → GET gallery all in one execution
-        (same egress IP).  This is required because SoFurry pins
-        sessions to IPs, and CF Workers rotate IPs between invocations.
-
-        Returns the gallery HTML on success, None on failure.
-        """
-        if not self.username or not self.password or not self.display_name:
-            return None
-
-        transport = self._http._transport
-        if not hasattr(transport, 'login_and_fetch'):
-            logger.error("SoFurry: login_and_fetch_gallery requires CF proxy transport")
-            return None
-
-        try:
-            gallery_url = f"{SOFURRY_BASE}/u/{self.display_name}/gallery"
-            logger.info("SoFurry: login_and_fetch_gallery → %s", gallery_url)
-
-            resp = await transport.login_and_fetch(
-                login_url=f"{SOFURRY_BASE}/login",
-                email=self.username,
-                password=self.password,
-                then_url=gallery_url,
-            )
-
-            # Read response
-            raw_bytes = b""
-            async for chunk in resp.stream:
-                raw_bytes += chunk
-            html = raw_bytes.decode("utf-8", errors="replace")
-
-            final_url = resp.headers.get("x-final-url", "")
-            logger.info("SoFurry login_and_fetch — status=%d final=%s size=%d",
-                        resp.status_code, final_url, len(html))
-
-            # Check if login succeeded (page has logout link = authenticated)
-            has_logout = bool(re.search(r'logout|sign.?out', html, re.IGNORECASE))
-            has_subs = bool(re.search(r'/s/[A-Za-z0-9]+', html))
-
-            if has_logout or has_subs:
-                self._logged_in = True
-                logger.info("SoFurry login_and_fetch OK — authenticated=%s, has_subs=%s",
-                            has_logout, has_subs)
-                return html
-
-            # Login may have failed
-            if "/login" in final_url:
-                logger.warning("SoFurry login_and_fetch failed — still on login page")
-            else:
-                logger.warning("SoFurry login_and_fetch — no auth indicators (size=%d)", len(html))
-            return None
-
-        except Exception as e:
-            logger.warning("SoFurry login_and_fetch failed: %s", e)
-            return None
-
-    async def _submit_2fa(self, page_text: str) -> bool:
-        """Submit a TOTP 2FA code to complete authentication."""
-        try:
-            # Extract form action URL
-            form_action = f"{SOFURRY_BASE}/auth/2fa"
-            action_match = re.search(
-                r'<form[^>]*action="([^"]*)"[^>]*>',
-                page_text, re.IGNORECASE
-            )
-            if action_match:
-                action_url = action_match.group(1)
-                if action_url.startswith("/"):
-                    form_action = f"{SOFURRY_BASE}{action_url}"
-                elif action_url.startswith("http"):
-                    form_action = action_url
-
-            csrf_match = re.search(r'name="_token"\s*value="([^"]+)"', page_text)
-            if not csrf_match:
-                logger.error("SoFurry: Could not find CSRF token on 2FA page")
-                return False
-            csrf_token = csrf_match.group(1)
-
-            code_field = "one_time_password"
-            field_match = re.search(
-                r'name="((?:code|one_time_password|totp|otp|2fa_code)[^"]*)"',
-                page_text, re.IGNORECASE
-            )
-            if field_match:
-                code_field = field_match.group(1)
-
-            resp = await self._http.post(
-                form_action,
-                data={"_token": csrf_token, code_field: self.totp_code},
-            )
-            final_url = str(resp.url)
-            final_path = final_url.split("sofurry.com")[-1] if "sofurry.com" in final_url else final_url
-
-            if "/login" not in final_path and "/2fa" not in final_path:
-                self._logged_in = True
-                logger.info("SoFurry 2FA successful for %s", self.username)
-                return True
-
-            logger.warning("SoFurry 2FA failed — still on auth page")
-            return False
-        except Exception as e:
-            logger.warning("SoFurry 2FA submission failed: %s", e)
-            return False
-
-    async def check_session(self) -> bool:
-        """Lightweight check: are we still authenticated?
-
-        Fetches the user's profile page and checks for a redirect to /login
-        (which SoFurry does when the session has expired).  Returns True if
-        the session cookies are still valid, False otherwise.
-        """
-        if not self._logged_in:
-            return False
-        try:
-            resp = await self._http.get(
-                f"{SOFURRY_BASE}/u/{self.display_name}",
-                follow_redirects=False,
-            )
-            # A 302 to /login means the session expired
-            if resp.status_code in (301, 302):
-                location = resp.headers.get("location", "")
-                if "/login" in location:
-                    logger.info("SoFurry session expired (redirected to login)")
-                    self._logged_in = False
-                    return False
-            # 200 with gallery content = still logged in
-            return resp.status_code == 200
-        except Exception as e:
-            logger.debug("SoFurry session check failed: %s", e)
-            return False
-
-    async def ensure_logged_in(self) -> bool:
-        """Re-use existing session if valid, otherwise log in fresh.
-
-        Returns True if we end up authenticated, False on failure.
-        Handles restored cookies: if cookies exist in the jar but
-        _logged_in is False, temporarily enables the flag so
-        check_session() can test the restored cookies.
-        """
-        # If cookies were restored but _logged_in is False, try them
-        if not self._logged_in and self._http.cookies:
-            self._logged_in = True  # Temporarily enable so check_session() proceeds
-            if await self.check_session():
-                logger.info("SoFurry restored session is valid -- skipping login")
-                return True
-            self._logged_in = False  # Restored cookies were invalid
-        elif await self.check_session():
-            logger.info("SoFurry session still valid — skipping login")
-            return True
-        # Session expired or never established — do a full login
-        self._logged_in = False
-        return await self.login()
-
-    def update_credentials(self, username: str, password: str,
-                           display_name: str, totp_code: str = "") -> bool:
-        """Update stored credentials.  Returns True if they changed."""
-        changed = (self.username != username or self.password != password
-                   or self.display_name != display_name)
-        self.username = username
-        self.password = password
-        self.display_name = display_name
-        self.totp_code = totp_code
+    def update_credentials(self, api_token: str, display_name: str = "") -> bool:
+        """Re-point the client at a new token/handle. True when anything changed."""
+        api_token = (api_token or "").strip()
+        display_name = (display_name or "").lstrip("@").strip()
+        changed = (api_token != self.api_token) or (display_name != self.display_name)
         if changed:
-            self._logged_in = False  # Force re-login on next poll
+            self.api_token = api_token
+            self.display_name = display_name
+            self._api.headers.update(self._api_headers())
+            if not api_token:
+                self._api.headers.pop("Authorization", None)
         return changed
 
-    def export_cookies(self) -> dict | None:
-        """Serialize the httpx cookie jar for persistence across restarts.
+    @property
+    def has_token(self) -> bool:
+        return bool(self.api_token)
 
-        Returns a dict suitable for JSON storage in settings.json, or None
-        if the cookie jar is empty (no session to save).
-        """
-        from datetime import datetime, timezone
-        jar = self._http.cookies
-        if not jar:
-            return None
-        cookies = {}
-        for cookie in jar.jar:
-            cookies[cookie.name] = {
-                "value": cookie.value,
-                "domain": cookie.domain,
-                "path": cookie.path,
-            }
-        if not cookies:
-            return None
-        return {
-            "cookies": cookies,
-            "saved_at": datetime.now(timezone.utc).isoformat(),
-            "saved_for_user": self.username,
-        }
+    # -- Official-API plumbing -----------------------------------------
 
-    def import_cookies(self, data: dict) -> bool:
-        """Restore cookies from a previously exported dict.
-
-        Validates structure and checks that ``saved_for_user`` matches
-        the current username (stale cookies from a different account are
-        rejected).  Returns True if cookies were successfully restored.
-        """
-        if not isinstance(data, dict):
-            return False
-        if data.get("saved_for_user") != self.username:
-            logger.info("Saved SF cookies are for %s, current user is %s -- ignoring",
-                        data.get("saved_for_user"), self.username)
-            return False
-        cookies = data.get("cookies")
-        if not isinstance(cookies, dict) or not cookies:
-            return False
+    @staticmethod
+    def _body(resp: httpx.Response) -> dict:
         try:
-            for name, info in cookies.items():
-                if not isinstance(info, dict) or "value" not in info:
-                    continue
-                self._http.cookies.set(
-                    name,
-                    info["value"],
-                    domain=info.get("domain", ".sofurry.com"),
-                    path=info.get("path", "/"),
+            data = resp.json()
+        except Exception:
+            return {}
+        return data if isinstance(data, dict) else {"data": data}
+
+    def _check(self, resp: httpx.Response, what: str) -> dict:
+        """Raise on failure, else return the parsed body.
+
+        SoFurry returns **HTTP 500 with a body saying ``statusCode: 400``** for an
+        unsupported method, so the body's own code is the more truthful signal and
+        is preferred in the message. Both are kept on the exception.
+        """
+        body = self._body(resp)
+        inner = body.get("statusCode")
+        # 3xx counts as failure: this client does not follow redirects, and the
+        # one redirect the API emits is the login bounce you get without an
+        # Accept: application/json header. Letting it through would hand the
+        # caller an empty dict that looks like a successful-but-empty response.
+        if resp.status_code >= 300 or (isinstance(inner, int) and inner >= 400):
+            if resp.status_code in (301, 302, 303, 307, 308):
+                raise SoFurryError(
+                    f"SF {what} was redirected to {resp.headers.get('location', '?')} — "
+                    "the request was not authenticated as JSON",
+                    status=resp.status_code, body=body,
                 )
-            logger.info("Restored %d SF session cookies from settings", len(cookies))
-            return True
-        except Exception as e:
-            logger.warning("Failed to restore SF cookies: %s", e)
-            return False
+            msg = (body.get("description") or body.get("message")
+                   or resp.text[:200] or "unknown error")
+            raise SoFurryError(
+                f"SF {what} failed (HTTP {resp.status_code}"
+                + (f", body says {inner}" if inner and inner != resp.status_code else "")
+                + f"): {msg}",
+                status=resp.status_code, body=body,
+            )
+        return body
 
-    async def validate_session(self) -> str | None:
-        """Login and verify the configured handle resolves to a real gallery.
+    async def _require_token(self) -> None:
+        if not self.api_token:
+            raise SoFurryError(
+                "SoFurry is not connected — add a Personal Access Token "
+                f"(create one at {SOFURRY_PAT_URL})"
+            )
 
-        The 2026-06 SoFurry beta rewrite made profile pages client-rendered, so
-        the old ``/u/{handle}`` HTML no longer carries ``/gallery`` or a
-        ``window.handle`` marker — the previous checks always whiffed and logged
-        a spurious "Could not verify SF display name" every cycle. Verify against
-        the SPA-era endpoints instead (both login-free, both reliable):
-          1. ``/api/profile?handle=`` — JSON; the canonical handle comes back in
-             ``user.handle``, so we also normalise a mistyped ``@handle`` here.
-          2. ``/u/{handle}/gallery.data`` — a 200 confirms the gallery route
-             resolves (adult galleries are SFW-filtered but still 200).
+    # -- Authentication / validation -----------------------------------
 
-        Returns the (normalised) display name on success, None on failure.
+    async def validate_token(self) -> str | None:
+        """Verify the PAT and return the account's canonical handle, else None.
+
+        ``GET /v1/user/me`` is the cheap auth check; its ``handle`` is authoritative,
+        so this also self-heals a mistyped or renamed ``sf_display_name`` instead of
+        logging the "could not verify" warning the old session check produced.
         """
-        if not await self.ensure_logged_in():
+        if not self.api_token:
+            logger.warning("SF: no API token configured")
             return None
-
-        # Tolerate a mistyped "@handle" / stray whitespace in settings.
-        handle = (self.display_name or "").lstrip("@").strip()
-        if not handle:
-            logger.warning("SF: no display name configured to verify")
-            return None
-
         try:
-            # 1. Profile JSON API — authoritative; also yields the canonical handle.
-            resp = await self._http.get(
-                f"{SOFURRY_API}/profile",
-                params={"handle": handle},
-                headers={"Accept": "application/json"},
-            )
-            if resp.status_code == 200:
-                user = (resp.json() or {}).get("user") or {}
-                if user.get("id"):
-                    self.display_name = user.get("handle") or handle
-                    return self.display_name
-
-            # 2. Gallery loader data — a 200 means the route (and handle) exists.
-            resp = await self._http.get(
-                f"{SOFURRY_BASE}/u/{handle}/gallery.data",
-                headers={"Accept": "*/*"},
-            )
-            if resp.status_code == 200:
+            resp = await self._api.get("/v1/user/me")
+            if resp.status_code == 401:
+                logger.warning("SF: API token rejected (401) — it may have been revoked or expired")
+                return None
+            body = self._check(resp, "user/me")
+            user = body.get("user") or body
+            handle = user.get("handle") or user.get("username")
+            if handle:
                 self.display_name = handle
                 return handle
-
-            logger.warning("Could not verify SF display name")
+            logger.warning("SF: /v1/user/me returned no handle")
+            return None
+        except SoFurryError as e:
+            logger.warning("SF: token validation failed: %s", e)
             return None
         except Exception as e:
-            logger.warning("SoFurry session validation failed: %s", e)
+            logger.warning("SF: token validation error: %s", e)
             return None
 
-    # -- Gallery Listing -----------------------------------------------
+    # Back-compat alias — callers that predate the PAT migration.
+    async def validate_session(self) -> str | None:
+        return await self.validate_token()
+
+    # -- Gallery listing (official API) --------------------------------
 
     async def get_all_gallery_ids(self) -> list[dict]:
-        """Best-effort discovery of gallery submission IDs on the SoFurry beta.
+        """Every submission on the authenticated account, from the official API.
 
-        The 2026-06 "SoFurry beta" rewrite replaced the server-rendered gallery
-        (``<div id={sid}>`` blocks + ``/s/{sid}?ref=glr`` links) with a React
-        Router SPA whose gallery loader data lives at
-        ``/u/{handle}/gallery.data`` (a turbo-stream payload). Crucially, an
-        UNAUTHENTICATED request to that endpoint is SFW-filtered, so a user
-        whose works are Adult sees NO submissions — auto-discovery of new works
-        therefore needs a working authenticated session, which the CF-Worker
-        login path no longer provides on the new site.
+        This replaces a genuinely bad heuristic. The old implementation scraped
+        ``/u/{handle}/gallery.data`` and, because that turbo-stream payload
+        de-duplicates strings and lists folders alongside submissions, it took
+        *every* 8-character alphanumeric token, subtracted the ids it knew weren't
+        submissions, and handed the rest to the poller as unvalidated "candidates".
+        Worse, an unauthenticated request to that endpoint is SFW-filtered, so an
+        adult gallery returned **nothing at all**.
 
-        The poll cycle does not depend on this: per-submission stats are fetched
-        login-free from ``/s/{id}.data`` (see get_submission_detail) and the poller
-        always polls the submission IDs it already knows from the DB. This method
-        returns *candidate* ids (see the extraction note below) that the poller
-        validates before persisting. Returns [] when nothing is visible.
+        ``GET /v1/user/{handle}/submissions`` returns the real list — paginated,
+        with a true ``meta.total``, and including private works because the handle
+        belongs to the authenticated user. No guessing, no SFW filtering.
         """
-        try:
-            resp = await self._http.get(
-                f"{SOFURRY_BASE}/u/{self.display_name}/gallery.data",
-                headers={"Accept": "*/*"},
-            )
-            if resp.status_code != 200:
-                logger.warning("SF: gallery.data returned HTTP %d", resp.status_code)
-                return []
-            text = resp.text
-
-            # The gallery turbo-stream lists folders AND submissions, both with
-            # 8-char alnum ids, and de-duplicates strings — so a "submission"-only
-            # regex misses most works. Instead take every id-shaped token (8 alnum
-            # chars with >=1 digit/uppercase → drops lowercase tag/keyword values)
-            # and subtract the things we KNOW aren't submissions: the profile's own
-            # user id (which redirects to a titled page, so it would slip past the
-            # poller's title guard) and the folder ids. Remaining tokens are
-            # candidates; the poller validates each via /s/{id}.data (folders /
-            # field-name tokens 404 → no title) before persisting, so a stray
-            # candidate is dropped, never stored as junk.
-            exclude: set[str] = set()
-            try:
-                pr = await self._http.get(
-                    f"{SOFURRY_API}/profile",
-                    params={"handle": self.display_name},
-                    headers={"Accept": "application/json"},
-                )
-                if pr.status_code == 200:
-                    uid = ((pr.json() or {}).get("user") or {}).get("id")
-                    if uid:
-                        exclude.add(str(uid))
-            except Exception:
-                pass
-            try:
-                fr = await self._http.get(
-                    f"{SOFURRY_API}/folders", headers={"Accept": "application/json"}
-                )
-                if fr.status_code == 200:
-                    for f in (fr.json() or []):
-                        if f.get("id"):
-                            exclude.add(str(f["id"]))
-            except Exception:
-                pass
-
-            ids: list[str] = []
-            for tok in re.findall(r'"([A-Za-z0-9]{8})"', text):
-                if tok in exclude:
-                    continue
-                if not any(ch.isdigit() or ch.isupper() for ch in tok):
-                    continue  # all-lowercase → a tag/keyword value, never an id
-                ids.append(tok)
-            ids = list(dict.fromkeys(ids))
-
-            if ids:
-                logger.info("SF: %d candidate submission ids from gallery.data", len(ids))
-            else:
-                logger.warning(
-                    "SF: gallery.data exposed no submissions for %s — the beta hides "
-                    "adult galleries from unauthenticated requests; the poller polls "
-                    "DB-known ids regardless.", self.display_name,
-                )
-            return [{"submission_id": sid, "title": "", "thumbnail_url": ""} for sid in ids]
-        except Exception as e:
-            logger.warning("SF: gallery.data discovery failed: %s", e)
+        await self._require_token()
+        handle = self.display_name or await self.validate_token()
+        if not handle:
             return []
 
-    # -- Submission Detail ---------------------------------------------
+        out: list[dict] = []
+        page = 1
+        while page <= 200:  # hard stop; 15/page → 3000 works
+            try:
+                resp = await self._api.get(
+                    f"/v1/user/{handle}/submissions", params={"page": page})
+                body = self._check(resp, f"gallery page {page}")
+            except SoFurryError as e:
+                logger.warning("SF: gallery listing failed on page %d: %s", page, e)
+                break
+
+            rows = body.get("data") or []
+            for row in rows:
+                sid = row.get("id")
+                if not sid:
+                    continue
+                out.append({
+                    "submission_id": str(sid),
+                    "title": row.get("title") or "",
+                    "thumbnail_url": row.get("thumbUrl") or "",
+                })
+
+            meta = body.get("meta") or {}
+            if not rows or page >= (meta.get("last_page") or page):
+                break
+            page += 1
+            await asyncio.sleep(config.SF_REQUEST_DELAY_SECONDS)
+
+        logger.info("SF: %d submissions listed via the official API", len(out))
+        return out
+
+    # -- Submission detail / analytics (anonymous JSON) -----------------
 
     async def get_submission_detail(self, submission_id: str) -> dict:
-        """Fetch submission stats from the SoFurry beta (React Router) site.
+        """Stats + metadata for one submission. No authentication required.
 
-        The 2026-06 "SoFurry beta" rewrite retired the server-rendered pages and
-        the old ``/ui/submission/{id}`` JSON API (now 404). The per-submission
-        loader data is exposed at ``/s/{id}.data`` as a turbo-stream payload that
-        carries title/views/likes/comments inline — and it is served WITHOUT
-        login for published works, so polling no longer needs an authenticated
-        session. We parse the stats out of that payload.
+        **The official API returns no statistics at all**, so this stays on
+        sofurry.com. It reads ``GET /api/submission/{id}``, which serves clean JSON
+        anonymously for published works (Adult included — verified against a live
+        ``rating: 20`` work).
 
-        On any fetch/parse failure the stat fields stay 0; the poller's
-        zero-view guard then skips the work for the cycle rather than persisting
-        a bogus 0 snapshot (which would corrupt the baseline — see the AO3/SqW/FA
-        zero-snapshot fix).
+        3.4.0 changed *which* endpoint this uses, and that fixed a real data bug.
+        The previous implementation regex-scraped the turbo-stream payload at
+        ``/s/{id}.data`` with a pattern that assumed a value always sits immediately
+        after its key. That payload is devalue-encoded with a **de-duplicated value
+        table**: large unique numbers like a view count are emitted fresh and matched
+        fine, but small integers that already appear in the table are not re-emitted,
+        so the key was followed by the *next key* and the parse silently returned 0.
+        Like counts are exactly the small integers that hit this — favourites were
+        systematically under-reported. The JSON endpoint has no such ambiguity.
+
+        Comment count still comes from the turbo-stream payload, because no JSON
+        endpoint exposes it (``/api/comments*`` variants all 404). That parse uses a
+        pattern anchored between two literals (``"total",N,"hasMore"``) rather than a
+        bare key lookup, so it does not share the failure mode above. It is
+        best-effort: on failure ``comments_count`` is **None**, meaning "unknown", and
+        the poller preserves the previous value rather than writing a bogus 0 that
+        would read as "all comments deleted" and then re-fire as new comments.
+
+        On total failure the stat fields stay 0; the poller's zero-view guard then
+        skips the work for the cycle rather than persisting a bogus baseline.
         """
-        detail = {
+        detail: dict[str, Any] = {
             "submission_id": submission_id,
             "title": "",
             "username": self.display_name,
@@ -569,65 +363,84 @@ class SoFurryClient:
             "link": f"{SOFURRY_BASE}/s/{submission_id}",
             "views": 0,
             "favorites_count": 0,
-            "comments_count": 0,
+            "comments_count": None,
         }
 
         try:
-            resp = await self._http.get(
-                f"{SOFURRY_BASE}/s/{submission_id}.data",
-                headers={"Accept": "*/*"},
+            resp = await self._web.get(
+                f"{SOFURRY_API}/submission/{submission_id}",
+                headers={"Accept": "application/json"},
             )
             if resp.status_code != 200:
-                logger.warning("SF: /s/%s.data returned HTTP %d", submission_id, resp.status_code)
+                logger.warning("SF: /api/submission/%s returned HTTP %d",
+                               submission_id, resp.status_code)
                 return detail
-            text = resp.text
-            detail["title"] = _rr_str(text, "title")
-            detail["description"] = _rr_str(text, "description")
-            detail["posted_at"] = _rr_str(text, "publishedAt")
-            detail["content_type"] = _rr_str(text, "category")
-            detail["views"] = _rr_int(text, "views")
-            detail["favorites_count"] = _rr_int(text, "likes")
-            # commentsMeta carries the real comment count:
-            #   ...,"perPage",20,"total",N,"hasMore",false,...
-            cm = re.search(r'"total",(\d+),"hasMore"', text)
-            if cm:
-                detail["comments_count"] = int(cm.group(1))
-            # Artwork thumbnail — the beta payload embeds the full CDN URL under
-            # /submissions/thumbnails/ (distinct from /users/avatars/, which is the
-            # poster's avatar). Text works have none; leaving it "" is correct there.
-            tm = re.search(
-                r'https://cdn\.sofurryfiles\.com/submissions/thumbnails/[^"\\ ]+', text)
-            if tm:
-                detail["thumbnail_url"] = tm.group(0)
+            sub = (resp.json() or {}).get("submission") or {}
+            detail["title"] = sub.get("title") or ""
+            detail["description"] = sub.get("description") or ""
+            detail["posted_at"] = sub.get("publishedAt") or ""
+            detail["content_type"] = str(sub.get("category") or "")
+            # The old turbo-stream path never populated rating at all (it stayed "").
+            # The JSON endpoint gives the int code, so store the human label the
+            # dashboard can show directly.
+            detail["rating"] = _RATING_MAP.get(_safe_int(sub.get("rating")), "")
+            detail["thumbnail_url"] = sub.get("thumbUrl") or ""
+            detail["keywords"] = [t for t in (sub.get("tags") or []) if isinstance(t, str)]
+            detail["views"] = _safe_int(sub.get("views"))
+            detail["favorites_count"] = _safe_int(sub.get("likes"))
         except Exception as e:
-            logger.warning("Failed to fetch SF submission %s via .data: %s", submission_id, e)
+            logger.warning("Failed to fetch SF submission %s: %s", submission_id, e)
+            return detail
 
+        detail["comments_count"] = await self._fetch_comment_count(submission_id)
         return detail
+
+    async def _fetch_comment_count(self, submission_id: str) -> int | None:
+        """Comment total from the turbo-stream payload. None means "unknown"."""
+        try:
+            resp = await self._web.get(
+                f"{SOFURRY_BASE}/s/{submission_id}.data", headers={"Accept": "*/*"})
+            if resp.status_code != 200:
+                logger.debug("SF: /s/%s.data returned HTTP %d for comment count",
+                             submission_id, resp.status_code)
+                return None
+            m = re.search(r'"total",(\d+),"hasMore"', resp.text)
+            return int(m.group(1)) if m else None
+        except Exception as e:
+            logger.debug("SF: comment count fetch failed for %s: %s", submission_id, e)
+            return None
+
+    async def get_page(self, url: str) -> httpx.Response:
+        """Fetch a sofurry.com page on the unauthenticated web client.
+
+        Used by the importer to scrape rendered story HTML, which no API returns.
+        Public so callers don't reach into the transport directly.
+        """
+        return await self._web.get(url)
 
     async def get_submission_details_batch(self, submission_ids: list[str]) -> list[dict]:
         """Fetch details for multiple submissions sequentially with rate limiting."""
         details: list[dict] = []
         for i, sid in enumerate(submission_ids):
             try:
-                detail = await self.get_submission_detail(sid)
-                details.append(detail)
+                details.append(await self.get_submission_detail(sid))
             except Exception as e:
                 logger.warning("Failed to fetch SF submission %s: %s", sid, e)
             if i < len(submission_ids) - 1:
                 await asyncio.sleep(config.SF_REQUEST_DELAY_SECONDS)
         return details
 
-    # -- Followers/Watchers --------------------------------------------
+    # -- Followers (anonymous JSON) ------------------------------------
 
     async def get_follower_count(self) -> int:
-        """Follower count from the beta profile API (login-free).
+        """Follower count from the profile API (login-free).
 
-        ``GET /api/profile?handle={handle}`` → ``user.followerCount``. The old
-        ``/u/{handle}`` HTML scrape is dead (the profile is an SPA now). Returns
-        0 on failure.
+        Kept on sofurry.com deliberately: the official ``GET /v1/user/{handle}``
+        carries no ``followerCount`` — verified against the OpenAPI schema and a
+        live response.
         """
         try:
-            resp = await self._http.get(
+            resp = await self._web.get(
                 f"{SOFURRY_API}/profile",
                 params={"handle": self.display_name},
                 headers={"Accept": "application/json"},
@@ -635,19 +448,18 @@ class SoFurryClient:
             if resp.status_code == 200:
                 user = (resp.json() or {}).get("user", {})
                 return _safe_int(user.get("followerCount"))
-            logger.warning("SF: /api/profile returned HTTP %d for follower count", resp.status_code)
+            logger.warning("SF: /api/profile returned HTTP %d for follower count",
+                           resp.status_code)
         except Exception as e:
             logger.warning("Failed to get SF follower count: %s", e)
         return 0
 
     async def scrape_followers(self) -> list[str]:
-        """Follower usernames via the beta API (login-free).
+        """Follower handles via the profile API (login-free).
 
-        ``GET /api/followers?handle={handle}&mode=followers&page={0-based}`` →
-        ``{"users":[{"handle","username","avatarUrl","headline","followerCount"}],
-        "page","hasNextPage"}`` (20 per page). Pages through ``hasNextPage`` and
-        collects handles. Returns [] on failure — the poller's prune is guarded on
-        a non-empty result, so an empty/failed fetch never wipes the watcher list.
+        ``GET /api/followers?handle={handle}&mode=followers&page={0-based}``, 20 per
+        page. Returns [] on failure — the poller's prune is guarded on a non-empty
+        result, so a failed fetch never wipes the watcher list.
         """
         followers: list[str] = []
         seen: set[str] = set()
@@ -655,13 +467,15 @@ class SoFurryClient:
 
         for _page_safety in range(500):  # hard cap: 500 pages * 20 = 10k followers
             try:
-                resp = await self._http.get(
+                resp = await self._web.get(
                     f"{SOFURRY_API}/followers",
-                    params={"handle": self.display_name, "mode": "followers", "page": str(page)},
+                    params={"handle": self.display_name, "mode": "followers",
+                            "page": str(page)},
                     headers={"Accept": "application/json"},
                 )
                 if resp.status_code != 200:
-                    logger.warning("SF: /api/followers page %d returned HTTP %d", page, resp.status_code)
+                    logger.warning("SF: /api/followers page %d returned HTTP %d",
+                                   page, resp.status_code)
                     break
                 data = resp.json() or {}
             except Exception as e:
@@ -683,186 +497,23 @@ class SoFurryClient:
         logger.info("SF: scraped %d followers via /api/followers", len(followers))
         return followers
 
+    # -- Reads against the official API --------------------------------
 
-    # ── Posting / Upload ────────────────────────────────────────
-
-    async def _get_csrf_meta(self) -> str | None:
-        """Extract the CSRF token from <meta name="csrf-token"> on a page.
-
-        Post-auth-bridge, the homepage is a Remix page whose meta tag carries the
-        token the beta /api/* write endpoints require in an X-CSRF-Token header.
-        """
-        try:
-            resp = await self._http.get(f"{SOFURRY_BASE}/")
-            match = re.search(r'<meta\s+name="csrf-token"\s+content="([^"]+)"', resp.text)
-            if match:
-                return match.group(1)
-            # Fallback: try the _token hidden input pattern
-            match = re.search(r'name="_token"\s*value="([^"]+)"', resp.text)
-            if match:
-                return match.group(1)
-        except Exception as e:
-            logger.warning("SF: CSRF token extraction failed: %s", e)
-        return None
-
-    def _api_headers(self, csrf: str) -> dict:
-        """Standard headers for an authed write to the beta /api/* endpoints."""
-        return {
-            "X-CSRF-Token": csrf,
-            "Accept": "application/json",
-            "Origin": SOFURRY_BASE,
-            "Referer": f"{SOFURRY_BASE}/",
-        }
-
-    async def _api_authed(self) -> bool:
-        """Cheap check: does the current Remix session authorise /api/* writes?"""
-        try:
-            r = await self._http.get(
-                f"{SOFURRY_API}/upload-quota", headers={"Accept": "application/json"}
-            )
-            return r.status_code == 200
-        except Exception:
-            return False
-
-    async def _bridge_session(self) -> None:
-        """Exchange the authed Laravel session for an authed Remix session.
-
-        SoFurry's "beta" is a hybrid: Laravel still serves /login, but the new
-        /api/* endpoints are React-Router (Remix) and authenticate via a separate
-        Remix session cookie. GET /fe/auth/sofurry runs an OAuth2-PKCE flow that
-        auto-approves off the live Laravel session (→ /oauth/authorize →
-        /fe/auth/callback) and sets an authenticated Remix `_session`. Idempotent;
-        re-running it refreshes the Remix session.
-        """
-        try:
-            await self._http.get(f"{SOFURRY_BASE}/fe/auth/sofurry")
-        except Exception as e:
-            logger.warning("SF: auth bridge (/fe/auth/sofurry) failed: %s", e)
-
-    async def _ensure_api_session(self) -> str:
-        """Ensure an authenticated Remix /api session, returning the CSRF token.
-
-        Laravel login (or restored cookies) → OAuth bridge → verify the API is
-        actually authed (a restored session can pass check_session but still be
-        stale for /api/*), retrying with a fresh login once if needed.
-        """
-        if not await self.ensure_logged_in():
-            raise RuntimeError("SoFurry: Not logged in")
-        await self._bridge_session()
-        if not await self._api_authed():
-            logger.info("SF: API not authed after bridge — forcing a fresh login")
-            self._logged_in = False
-            if not await self.login():
-                raise RuntimeError("SoFurry: login failed")
-            await self._bridge_session()
-            if not await self._api_authed():
-                raise RuntimeError(
-                    "SoFurry: API session not authenticated after login + bridge"
-                )
-        csrf = await self._get_csrf_meta()
-        if not csrf:
-            raise RuntimeError("SoFurry: could not obtain CSRF token")
-        return csrf
-
-    async def _editor_dispatch(
-        self, endpoint: str, csrf: str, *,
-        method: str | None = None,
-        fields: list[tuple[str, str]] | None = None,
-    ) -> dict:
-        """Low-level POST to /api/submission-editor (the beta's generic write hub).
-
-        The editor tunnels every submission/content write through one endpoint:
-        `_endpoint` selects the target (e.g. ``submission/{id}``,
-        ``submission/{id}/content/{cid}``, ``upload/{id}/content/{cid}``) and the
-        optional ``_method`` overrides the verb (PUT/DELETE). Sent as multipart so
-        repeated keys (e.g. ``artistTags[]``) work like the browser's FormData.
-        """
-        parts: list[tuple[str, str]] = [("_endpoint", endpoint)]
-        if method:
-            parts.append(("_method", method))
-        parts.extend(fields or [])
-        files = [(k, (None, v)) for k, v in parts]
-        resp = await self._http.post(
-            f"{SOFURRY_API}/submission-editor",
-            headers=self._api_headers(csrf), files=files, timeout=30.0,
-        )
-        if resp.status_code != 200:
-            raise RuntimeError(
-                f"SF: submission-editor ({endpoint}) failed — "
-                f"status {resp.status_code}: {resp.text[:200]}"
-            )
-        try:
-            return resp.json()
-        except Exception:
+    async def get_submission(self, submission_id: str) -> dict:
+        """Full submission object from the official API (includes private works)."""
+        await self._require_token()
+        resp = await self._api.get(f"/v1/submission/{submission_id}")
+        if resp.status_code == 404:
             return {}
-
-    async def _submission_editor(
-        self, submission_id: str, csrf: str, *,
-        title: str, description: str, tags: list[str] | None,
-        category: int, sub_type: int, rating: int, privacy: int,
-        allow_comments: bool = True, allow_downloads: bool = True,
-        is_wip: bool = False, optimize: bool = True,
-        pixel_perfect: bool = False, is_advert: bool = False,
-        content_order: list[str] | None = None,
-    ) -> dict:
-        """Set a submission's metadata (title/desc/tags/rating/privacy/flags).
-
-        Tags go as repeated ``artistTags[]`` (underscores → spaces); category/type
-        are INT codes; ``content_order`` (a list of contentIds) sets chapter order.
-        """
-        b = lambda v: "true" if v else "false"
-        fields = [
-            ("title", title or ""),
-            ("description", description or ""),
-            ("category", str(category)),
-            ("type", str(sub_type)),
-            ("rating", str(rating)),
-            ("privacy", str(privacy)),
-            ("allowComments", b(allow_comments)),
-            ("allowDownloads", b(allow_downloads)),
-            ("isWip", b(is_wip)),
-            ("optimize", b(optimize)),
-            ("pixelPerfect", b(pixel_perfect)),
-            ("isAdvert", b(is_advert)),
-        ]
-        for t in (tags or []):
-            fields.append(("artistTags[]", t.replace("_", " ")))
-        for cid in (content_order or []):
-            fields.append(("contentOrder[]", str(cid)))
-        return await self._editor_dispatch(
-            f"submission/{submission_id}", csrf, method="POST", fields=fields,
-        )
-
-    async def set_content_title(self, submission_id: str, content_id: str,
-                                title: str, csrf: str | None = None) -> None:
-        """Set the chapter title on one content item of a submission."""
-        if csrf is None:
-            csrf = await self._ensure_api_session()
-        await self._editor_dispatch(
-            f"submission/{submission_id}/content/{content_id}", csrf,
-            fields=[("title", title or "")],
-        )
-
-    async def delete_content(self, submission_id: str, content_id: str,
-                             csrf: str | None = None) -> None:
-        """Delete one content item (chapter) from a submission."""
-        if csrf is None:
-            csrf = await self._ensure_api_session()
-        await self._editor_dispatch(
-            f"upload/{submission_id}/content/{content_id}", csrf, method="DELETE",
-        )
+        body = self._check(resp, f"get submission {submission_id}")
+        return body.get("submission") or body
 
     async def get_content_ids(self, submission_id: str) -> list[str]:
-        """Return the submission's content item ids, in their stored order."""
-        resp = await self._http.get(
-            f"{SOFURRY_API}/submission/{submission_id}",
-            headers={"Accept": "application/json"},
-        )
-        if resp.status_code != 200:
-            return []
+        """The submission's content item ids, in their stored order."""
         try:
-            sub = (resp.json() or {}).get("submission", {})
-        except Exception:
+            sub = await self.get_submission(submission_id)
+        except SoFurryError as e:
+            logger.warning("SF: could not list content for %s: %s", submission_id, e)
             return []
         out = []
         for item in (sub.get("content") or []):
@@ -871,21 +522,24 @@ class SoFurryClient:
                 out.append(str(cid))
         return out
 
-    async def upload_content(self, submission_id: str, file_path: str,
-                             csrf: str | None = None,
-                             content_type: str | None = None) -> str | None:
-        """Upload a content file to an existing submission.
+    # -- Writes (official API) -----------------------------------------
 
-        Adds another item to the submission's `content[]` array. Returns the new
-        contentId. Story chapters are HTML (≥ 1 KB, SoFurry's floor); artwork
-        submissions upload the image itself. content_type is auto-detected from
-        the file extension when not given (image MIME for png/jpg/gif/webp, else
-        text/html) so the same endpoint carries both stories and art.
+    async def upload_content(self, submission_id: str, file_path: str,
+                             content_type: str | None = None) -> str | None:
+        """Append a content item (chapter / image) to a submission.
+
+        SoFurry rejects anything under 1 KB with a 422, so that is checked up front
+        to produce a comprehensible error. content_type is inferred from the
+        extension when not given, so the same call carries stories and artwork.
         """
-        if csrf is None:
-            csrf = await self._ensure_api_session()
+        await self._require_token()
         with open(file_path, "rb") as f:
             file_data = f.read()
+        if len(file_data) < SF_MIN_CONTENT_BYTES:
+            raise SoFurryError(
+                f"SF rejects content under {SF_MIN_CONTENT_BYTES} bytes; "
+                f"{os.path.basename(file_path)} is {len(file_data)} bytes"
+            )
         filename = os.path.basename(file_path)
         if content_type is None:
             ext = os.path.splitext(filename)[1].lstrip(".").lower()
@@ -893,67 +547,110 @@ class SoFurryClient:
                 "png": "image/png", "jpg": "image/jpeg", "jpeg": "image/jpeg",
                 "gif": "image/gif", "webp": "image/webp",
             }.get(ext, "text/html")
-        resp = await self._http.post(
-            f"{SOFURRY_API}/upload-content",
-            headers=self._api_headers(csrf),
-            data={"submissionId": str(submission_id)},
+
+        resp = await self._api.post(
+            f"/v1/submission/{submission_id}/content",
             files={"file": (filename, file_data, content_type)},
             timeout=120.0,
         )
-        if resp.status_code != 200:
-            raise RuntimeError(
-                f"SF: upload-content failed — status {resp.status_code}: {resp.text[:200]}"
-            )
-        try:
-            return (resp.json() or {}).get("contentId")
-        except Exception:
-            return None
+        body = self._check(resp, f"upload content to {submission_id}")
+        return body.get("contentId")
 
-    async def delete_submission(self, submission_id: str,
-                                csrf: str | None = None) -> bool:
-        """Delete a submission via DELETE /api/submission/{id}."""
-        if csrf is None:
-            csrf = await self._ensure_api_session()
-        resp = await self._http.request(
-            "DELETE", f"{SOFURRY_API}/submission/{submission_id}",
-            headers=self._api_headers(csrf), timeout=30.0,
-        )
-        if resp.status_code != 200:
-            raise RuntimeError(
-                f"SF: delete failed — status {resp.status_code}: {resp.text[:200]}"
-            )
-        return True
+    async def update_content(self, submission_id: str, content_id: str, *,
+                             body_html: str | None = None,
+                             title: str | None = None,
+                             description: str | None = None) -> dict:
+        """Replace one content item's body and/or title **in place**.
 
-    async def set_thumbnail(self, submission_id: str, image_path: str,
-                            csrf: str | None = None) -> bool:
-        """Upload a custom thumbnail (png/jpeg/webp) for a submission.
+        This exists because **the official API cannot delete content**. Both DELETE
+        routes are unsupported and Laravel ``_method`` spoofing is rejected too (the
+        spoof is honoured, then routing refuses — so it is a genuine absence, not a
+        transport quirk). The old delete-then-reupload dance is therefore replaced by
+        updating the existing item, which is what the callers actually wanted and
+        avoids the window where a submission briefly held both copies.
 
-        Goes through the submission-editor dispatcher with
-        ``_endpoint=submission/{id}/thumbnail`` + a multipart ``file`` part, the
-        same call the beta editor makes. (Regenerate = the same endpoint with
-        ``_method=DELETE``, which drops the custom thumbnail so SF re-derives one.)
+        The consequence to know: if a story's chapter count *shrinks*, the surplus
+        items cannot be removed through the API at all and must be deleted in the
+        SoFurry UI. Callers should log loudly when that happens.
         """
-        if csrf is None:
-            csrf = await self._ensure_api_session()
-        with open(image_path, "rb") as f:
-            data = f.read()
-        name = os.path.basename(image_path)
-        ext = os.path.splitext(name)[1].lower().lstrip(".")
-        mime = {"png": "image/png", "jpg": "image/jpeg", "jpeg": "image/jpeg",
-                "webp": "image/webp"}.get(ext, "image/png")
-        files = [
-            ("_endpoint", (None, f"submission/{submission_id}/thumbnail")),
-            ("file", (name, data, mime)),
-        ]
-        resp = await self._http.post(
-            f"{SOFURRY_API}/submission-editor",
-            headers=self._api_headers(csrf), files=files, timeout=60.0,
+        await self._require_token()
+        payload: dict[str, Any] = {}
+        if title is not None:
+            payload["title"] = title
+        if description is not None:
+            payload["description"] = description
+        if body_html is not None:
+            payload["binary"] = body_html
+        resp = await self._api.post(
+            f"/v1/submission/{submission_id}/content/{content_id}",
+            json=payload, timeout=120.0,
         )
-        if resp.status_code != 200:
-            raise RuntimeError(
-                f"SF: thumbnail upload failed — status {resp.status_code}: {resp.text[:200]}"
-            )
-        return True
+        return self._check(resp, f"update content {content_id}")
+
+    async def set_content_title(self, submission_id: str, content_id: str,
+                                title: str) -> None:
+        """Set the chapter title on one content item."""
+        await self.update_content(submission_id, content_id, title=title or "")
+
+    async def _set_metadata(
+        self, submission_id: str, *,
+        title: str, description: str, tags: list[str] | None,
+        category: int, sub_type: int, rating: int, privacy: int,
+        allow_comments: bool = True, allow_downloads: bool = True,
+        is_wip: bool = False, optimize: bool = True,
+        pixel_perfect: bool = False, is_advert: bool = False,
+        content_order: list[str] | None = None,
+    ) -> dict:
+        """POST the full metadata block. Setting privacy=3 publishes.
+
+        The official API accepts a JSON body, where the internal one demanded
+        multipart with repeated ``artistTags[]`` fields — tags are a plain array now.
+        Underscores become spaces to match SoFurry's tag convention.
+        """
+        await self._require_token()
+        payload: dict[str, Any] = {
+            "title": title or "",
+            "description": description or "",
+            "category": int(category),
+            "type": int(sub_type),
+            "rating": int(rating),
+            "privacy": int(privacy),
+            "allowComments": bool(allow_comments),
+            "allowDownloads": bool(allow_downloads),
+            "isWip": bool(is_wip),
+            "optimize": bool(optimize),
+            "pixelPerfect": bool(pixel_perfect),
+            "isAdvert": bool(is_advert),
+            "artistTags": [t.replace("_", " ") for t in (tags or [])],
+        }
+        if content_order:
+            payload["contentOrder"] = [str(c) for c in content_order]
+        resp = await self._api.post(f"/v1/submission/{submission_id}", json=payload)
+        return self._check(resp, f"set metadata on {submission_id}")
+
+    async def set_content_order(self, submission_id: str, content_ids: list[str]) -> None:
+        """Reorder a submission's chapters without touching other metadata.
+
+        Reads current state first so the required metadata fields round-trip
+        unchanged — the endpoint takes a whole metadata block, not a patch.
+        """
+        sub = await self.get_submission(submission_id)
+        if not sub:
+            return
+        await self._set_metadata(
+            submission_id,
+            title=sub.get("title") or "",
+            description=sub.get("description") or "",
+            tags=sub.get("artistTags") or [],
+            category=_as_category_int(sub.get("category")),
+            sub_type=_as_type_int(sub.get("type")),
+            rating=_safe_int(sub.get("rating")),
+            privacy=_safe_int(sub.get("privacy")) or 1,
+            allow_comments=bool(sub.get("allowComments", True)),
+            allow_downloads=bool(sub.get("allowDownloads", True)),
+            is_wip=bool(sub.get("isWorkInProgress", False)),
+            content_order=content_ids,
+        )
 
     async def create_submission(
         self,
@@ -968,59 +665,45 @@ class SoFurryClient:
         privacy: int = 3,
         thumbnail_path: str | None = None,
     ) -> dict:
-        """Create and publish a new SoFurry submission (beta /api flow).
+        """Create and publish a submission via the official API.
 
-        Three steps against the React-Router API:
-          1. POST /api/upload-create        → mint an empty submission, get its id
-          2. POST /api/upload-content       → upload the story HTML file (>= 1 KB)
-          3. POST /api/submission-editor    → set metadata + publish
+        Three steps, matching the documented workflow:
+          1. ``PUT /v1/submission``                     → mint an empty private draft
+          2. ``POST /v1/submission/{id}/content``       → upload the file (>= 1 KB)
+          3. ``POST /v1/submission/{id}``               → metadata; privacy=3 publishes
 
-        Args:
-            file_path: Path to the HTML file to upload (>= 1 KB).
-            title: Submission title.
-            description: Plaintext description.
-            tags: List of tags (underscores replaced with spaces).
-            category: int code — 10=artwork, 20=writing, 30=photography, 40=music.
-            sub_type: int code — 21=short story, 29=book, 11=drawing, etc.
-            rating: 0=Clean, 10=Mature, 20=Adult.
-            privacy: 1=Private, 2=Unlisted, 3=Public.
+        ``thumbnail_path`` is accepted for signature compatibility but **cannot be
+        honoured** — the official API exposes no thumbnail or cover upload route
+        (all four plausible paths 404, and ``thumbUrl``/``coverUrl`` are read-only),
+        so a custom thumbnail is logged and skipped rather than silently dropped.
+        Text works auto-generate one anyway.
 
-        Returns:
-            Dict with 'submission_id' and 'url'.
+        Returns a dict with 'submission_id' and 'url'.
         """
-        csrf = await self._ensure_api_session()
+        await self._require_token()
 
-        # 1. Mint an empty submission (no body, like the browser).
-        resp = await self._http.post(
-            f"{SOFURRY_API}/upload-create", headers=self._api_headers(csrf), timeout=30.0,
-        )
-        if resp.status_code != 200:
-            raise RuntimeError(
-                f"SF: upload-create failed — status {resp.status_code}: {resp.text[:200]}"
-            )
-        submission_id = (resp.json() or {}).get("id")
+        resp = await self._api.put("/v1/submission")
+        body = self._check(resp, "create submission")
+        submission_id = body.get("id")
         if not submission_id:
-            raise RuntimeError(f"SF: upload-create response missing id: {resp.text[:200]}")
+            raise SoFurryError(f"SF: create returned no id: {resp.text[:200]}")
         logger.info("SF: created submission %s", submission_id)
 
-        # 2. Upload the story HTML as the first content item.
-        await self.upload_content(submission_id, file_path, csrf=csrf)
+        await self.upload_content(submission_id, file_path)
         logger.info("SF: uploaded content to submission %s", submission_id)
 
-        # 3. Set metadata + publish.
-        await self._submission_editor(
-            submission_id, csrf,
+        await self._set_metadata(
+            submission_id,
             title=title, description=description, tags=tags,
             category=category, sub_type=sub_type, rating=rating, privacy=privacy,
         )
 
         if thumbnail_path and os.path.isfile(thumbnail_path):
-            try:
-                await self.set_thumbnail(submission_id, thumbnail_path, csrf=csrf)
-                logger.info("SF: uploaded custom thumbnail for %s", submission_id)
-            except Exception as thumb_err:
-                # Non-fatal: text works auto-generate a thumbnail anyway.
-                logger.warning("SF: thumbnail upload failed for %s: %s", submission_id, thumb_err)
+            logger.warning(
+                "SF: custom thumbnail ignored for %s — the official API has no "
+                "thumbnail upload endpoint; set it in the SoFurry UI if needed.",
+                submission_id,
+            )
 
         url = f"{SOFURRY_BASE}/s/{submission_id}"
         logger.info("SF: published submission %s — %s", submission_id, url)
@@ -1036,96 +719,68 @@ class SoFurryClient:
         rating: int | None = None,
         privacy: int | None = None,
     ) -> dict:
-        """Edit metadata on an existing SoFurry submission (beta /api flow).
+        """Edit metadata on an existing submission.
 
-        Reads current state from GET /api/submission/{id} (the read API echoes
-        category/type as display STRINGS), overlays the caller's changes, and
-        POSTs the complete metadata back via /api/submission-editor (which wants
-        INT category/type codes — mapped here). Every unspecified field mirrors
-        the server's current value so an edit never clobbers state.
+        Reads current state, overlays only the caller's changes, and posts the whole
+        block back — the endpoint replaces metadata rather than patching it, so every
+        unspecified field must mirror the server or an edit would clobber it.
 
-        Privacy preservation: privacy defaults to the server's reported value,
-        keeping the old invariant that an edit must never silently downgrade a
-        public work to Private.
+        Privacy defaults to the server's current value, preserving the long-standing
+        invariant that an edit never silently downgrades a public work to Private.
         """
-        csrf = await self._ensure_api_session()
+        await self._require_token()
+        current = await self.get_submission(submission_id)
+        if not current:
+            raise SoFurryError(f"SF: submission {submission_id} not found")
 
-        raw_resp = await self._http.get(
-            f"{SOFURRY_API}/submission/{submission_id}",
-            headers={"Accept": "application/json"},
-        )
-        if raw_resp.status_code != 200:
-            raise RuntimeError(
-                f"SF: could not fetch current submission {submission_id} for edit "
-                f"(status {raw_resp.status_code})"
-            )
-        try:
-            current = (raw_resp.json() or {}).get("submission", {})
-        except Exception as e:
-            raise RuntimeError(f"SF: edit fetch returned non-JSON: {e}")
-
-        category = _SF_CATEGORY_STR_TO_INT.get(
-            str(current.get("category", "")).lower().replace(" ", ""), 20
-        )
-        sub_type = _SF_TYPE_STR_TO_INT.get(
-            str(current.get("type", "")).lower().replace(" ", ""), 21
-        )
-        cur_privacy = _safe_int(current.get("privacy")) or 3
-
-        await self._submission_editor(
-            submission_id, csrf,
-            title=title if title is not None else current.get("title", ""),
-            description=description if description is not None else current.get("description", ""),
-            tags=tags if tags is not None else current.get("tags"),
-            category=category, sub_type=sub_type,
-            rating=rating if rating is not None else _safe_int(current.get("rating")),
-            privacy=privacy if privacy is not None else cur_privacy,
+        result = await self._set_metadata(
+            submission_id,
+            title=title if title is not None else (current.get("title") or ""),
+            description=(description if description is not None
+                         else (current.get("description") or "")),
+            tags=tags if tags is not None else (current.get("artistTags") or []),
+            category=_as_category_int(current.get("category")),
+            sub_type=_as_type_int(current.get("type")),
+            rating=(_normalize_rating(rating) if rating is not None
+                    else _safe_int(current.get("rating"))),
+            privacy=(int(privacy) if privacy is not None
+                     else (_safe_int(current.get("privacy")) or 1)),
             allow_comments=bool(current.get("allowComments", True)),
             allow_downloads=bool(current.get("allowDownloads", True)),
-            is_wip=bool(current.get("isWip", False)),
-            pixel_perfect=bool(current.get("pixelPerfect", False)),
+            is_wip=bool(current.get("isWorkInProgress", False)),
         )
-
-        url = f"{SOFURRY_BASE}/s/{submission_id}"
-        logger.info(
-            "SF: edited submission %s — title=%r privacy=%s",
-            submission_id,
-            (title if title is not None else current.get("title", ""))[:40],
-            privacy if privacy is not None else cur_privacy,
-        )
-        return {"submission_id": submission_id, "url": url}
+        return {
+            "submission_id": str(submission_id),
+            "url": f"{SOFURRY_BASE}/s/{submission_id}",
+            "raw": result,
+        }
 
 
 def _safe_int(val: Any) -> int:
-    """Safely convert a value to int, handling None, comma-formatted strings, etc."""
-    if val is None:
-        return 0
     try:
-        if isinstance(val, str):
-            val = val.replace(",", "").strip()
         return int(val)
-    except (ValueError, TypeError):
+    except (TypeError, ValueError):
         return 0
 
 
-# ── React Router turbo-stream helpers (SoFurry beta /…​.data payloads) ──
-# React Router serialises loader data as a flat array where object entries are
-# laid out as ``"key",value`` pairs, so the value we want sits immediately after
-# its key name (e.g. ``"views",1485`` or ``"title","Some Story"``). These
-# pull a single scalar by key — robust enough for stats without a full decoder.
+def _as_category_int(val: Any) -> int:
+    """Category as an int, accepting either the int the official API returns or the
+    display string the internal API used to echo."""
+    if isinstance(val, int):
+        return val
+    if isinstance(val, str):
+        if val.isdigit():
+            return int(val)
+        return _SF_CATEGORY_STR_TO_INT.get(val.lower().strip(), 20)
+    return 20
 
-def _rr_int(text: str, key: str) -> int:
-    """Pull an int value that immediately follows a turbo-stream key."""
-    m = re.search(rf'"{re.escape(key)}",(\d+)', text)
-    return int(m.group(1)) if m else 0
 
-
-def _rr_str(text: str, key: str) -> str:
-    """Pull a JSON string value that immediately follows a turbo-stream key."""
-    m = re.search(rf'"{re.escape(key)}",("(?:[^"\\]|\\.)*")', text)
-    if not m:
-        return ""
-    try:
-        return json.loads(m.group(1))
-    except Exception:
-        return ""
+def _as_type_int(val: Any) -> int:
+    """Type as an int, accepting either an int or the legacy display string."""
+    if isinstance(val, int):
+        return val
+    if isinstance(val, str):
+        if val.isdigit():
+            return int(val)
+        return _SF_TYPE_STR_TO_INT.get(val.lower().replace(" ", "").strip(), 21)
+    return 21

@@ -501,38 +501,28 @@ async def import_from_sofurry(submission_id: str) -> dict:
     from clients.sf.client import SoFurryClient, SOFURRY_BASE
 
     settings = config.get_settings()
-    sf_username = settings.get("sf_username", "")
-    sf_password = settings.get("sf_password", "")
+    sf_token = settings.get("sf_api_token", "")
     sf_display = settings.get("sf_display_name", "")
 
     proxy_url = settings.get("cf_worker_url", "")
     proxy_key = settings.get("cf_worker_key", "")
 
-    if not sf_username or not sf_password:
-        raise RuntimeError("SoFurry credentials not configured — set up in Settings")
+    if not sf_token:
+        raise RuntimeError("SoFurry is not connected — add a Personal Access Token in Settings")
 
     client = SoFurryClient(
-        username=sf_username,
-        password=sf_password,
+        api_token=sf_token,
         display_name=sf_display,
         proxy_url=proxy_url,
         proxy_key=proxy_key,
     )
 
     try:
-        logged_in = await client.ensure_logged_in()
-        if not logged_in:
-            raise RuntimeError("Could not log in to SoFurry")
-
-        # Fetch metadata from the beta read API (nests fields under "submission").
-        resp = await client._http.get(
-            f"{SOFURRY_BASE}/api/submission/{submission_id}",
-            headers={"Accept": "application/json"},
-        )
-        if resp.status_code != 200:
-            raise RuntimeError(f"SF API returned {resp.status_code} for submission {submission_id}")
-
-        data = (resp.json() or {}).get("submission", {})
+        # Metadata via the official API, which returns the owner's private works
+        # too — so importing an unpublished draft still resolves.
+        data = await client.get_submission(submission_id)
+        if not data:
+            raise RuntimeError(f"SF submission {submission_id} not found")
         title = data.get("title", f"SF_{submission_id}")
         author_val = data.get("author")
         if isinstance(author_val, dict):
@@ -578,7 +568,7 @@ async def import_from_sofurry(submission_id: str) -> dict:
         # /s/{id} renders for owner-viewed drafts but we tolerate non-200
         # rather than failing the whole import — the description from JSON
         # remains a usable fallback so at least metadata + summary land.
-        page_resp = await client._http.get(f"{SOFURRY_BASE}/s/{submission_id}")
+        page_resp = await client.get_page(f"{SOFURRY_BASE}/s/{submission_id}")
         if page_resp.status_code != 200:
             if is_draft:
                 logger.warning(

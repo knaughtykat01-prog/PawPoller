@@ -128,7 +128,7 @@ def legacy_db(tmp_path, monkeypatch):
         "username": "kit", "password": "pw",
         "fa_username": "fox", "fa_cookie_a": "aaa", "fa_cookie_b": "bbb",
         "ws_api_key": "wskey",
-        "sf_username": "sfu", "sf_password": "sfp",
+        "sf_api_token": "sftok",
         "sqw_username": "sqwu", "sqw_password": "sqwp",
     }), encoding="utf-8")
     monkeypatch.setattr(config, "DB_PATH", dbfile)

@@ -159,10 +159,10 @@ async def t_ws_discovery(ctx: TestContext) -> None:
 
 @register_test(
     test_id="platforms.sf.auth",
-    name="SoFurry — session validates",
+    name="SoFurry — API token validates",
     category="Platforms — Auth",
-    description="validate_session() checks the active SF session.",
-    requires_creds=["sf_username", "sf_password"],
+    description="validate_token() checks the PAT against GET /v1/user/me.",
+    requires_creds=["sf_api_token"],
     timeout_seconds=30.0,
 )
 async def t_sf_auth(ctx: TestContext) -> None:
@@ -171,26 +171,25 @@ async def t_sf_auth(ctx: TestContext) -> None:
 
     s = config.get_settings()
     async with SoFurryClient(
-        s["sf_username"], s["sf_password"],
+        api_token=s["sf_api_token"],
         display_name=s.get("sf_display_name", ""),
         **proxy_kwargs(s, "sf"),
     ) as cli:
-        # validate_session() requires an active login; trigger one first so
-        # the diagnostic mirrors how the poller actually warms the session.
-        if not await cli.ensure_logged_in():
-            raise AssertionError("ensure_logged_in failed (login rejected)")
-        result = await cli.validate_session()
-        ctx.detail("result", result)
-        assert result, "SoFurry session did not validate"
+        result = await cli.validate_token()
+        ctx.detail("handle", result)
+        assert result, (
+            "SoFurry token did not validate — it may be revoked or expired, "
+            "or this host's IP is blocked (the API 403s datacenter ranges)"
+        )
 
 
 @register_test(
     test_id="platforms.sf.discovery",
-    name="SoFurry — gallery discovery",
+    name="SoFurry — gallery listing",
     category="Platforms — Polling Discovery",
-    description="Scrape the user's gallery page for submission IDs.",
-    requires_creds=["sf_username", "sf_password", "sf_display_name"],
-    timeout_seconds=30.0,
+    description="List the account's submissions via GET /v1/user/{handle}/submissions.",
+    requires_creds=["sf_api_token"],
+    timeout_seconds=60.0,
 )
 async def t_sf_discovery(ctx: TestContext) -> None:
     from clients.sf.client import SoFurryClient
@@ -198,20 +197,57 @@ async def t_sf_discovery(ctx: TestContext) -> None:
 
     s = config.get_settings()
     async with SoFurryClient(
-        s["sf_username"], s["sf_password"],
+        api_token=s["sf_api_token"],
         display_name=s.get("sf_display_name", ""),
         **proxy_kwargs(s, "sf"),
     ) as cli:
-        await cli.ensure_logged_in()
-        method = (
-            getattr(cli, "get_all_gallery_ids", None)
-            or getattr(cli, "get_user_submission_ids", None)
-            or getattr(cli, "scrape_gallery_ids", None)
-        )
-        if method is None:
-            raise ctx.skip("no gallery scrape method exposed on SoFurryClient")
-        ids = await method()
-        ctx.detail("submission_count", len(ids) if hasattr(ids, "__len__") else None)
+        ids = await cli.get_all_gallery_ids()
+        ctx.detail("submission_count", len(ids))
+        # Unlike the old gallery scrape — which returned unvalidated "candidate"
+        # ids and yielded nothing at all for an adult gallery — the official
+        # listing is authoritative, so an empty result is a real failure.
+        assert ids, "SoFurry gallery listing returned no submissions"
+        assert all(r.get("submission_id") for r in ids), "a listed row had no id"
+
+
+@register_test(
+    test_id="platforms.sf.stats",
+    name="SoFurry — stats readable without auth",
+    category="Platforms — Polling Discovery",
+    description=(
+        "Views/likes come from login-free JSON on sofurry.com because the "
+        "official API exposes no statistics at all."
+    ),
+    requires_creds=["sf_api_token"],
+    timeout_seconds=60.0,
+)
+async def t_sf_stats(ctx: TestContext) -> None:
+    from clients.sf.client import SoFurryClient
+    from polling.cf_proxy import proxy_kwargs
+
+    s = config.get_settings()
+    async with SoFurryClient(
+        api_token=s["sf_api_token"],
+        display_name=s.get("sf_display_name", ""),
+        **proxy_kwargs(s, "sf"),
+    ) as cli:
+        rows = await cli.get_all_gallery_ids()
+        if not rows:
+            raise ctx.skip("no SF submissions to sample")
+        # Sample the first row that actually resolves to a titled work.
+        detail = None
+        for row in rows[:5]:
+            d = await cli.get_submission_detail(row["submission_id"])
+            if (d.get("title") or "").strip():
+                detail = d
+                break
+        if detail is None:
+            raise ctx.skip("no published SF submission in the first 5 rows")
+        ctx.detail("title", detail["title"])
+        ctx.detail("views", detail["views"])
+        ctx.detail("favorites_count", detail["favorites_count"])
+        ctx.detail("comments_count", detail["comments_count"])
+        assert detail["views"] > 0, "views did not parse — the stats endpoint may have moved"
 
 
 # ── SquidgeWorld ─────────────────────────────────────────────────────

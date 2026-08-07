@@ -1,7 +1,40 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-08-07
-**Current version (master):** 3.3.0 — **Variants can carry their own description** (`artwork_reader.
+**Current version (master):** 3.4.0 — **SoFurry moved to its official API.** SoFurry shipped a public API
+(`api.sofurry.com`) with Personal Access Tokens, so the entire reverse-engineered auth stack is gone:
+Laravel login scrape, the OAuth2-PKCE bridge, `X-CSRF-Token` threading, cookie import/export, and the
+unhandled 2FA dead end. `clients/sf/client.py` went 1131 → ~640 lines and **the 2FA gap is closed
+permanently** (a PAT never logs in). **⚠ ACTION REQUIRED: SoFurry must be reconnected once** — Settings →
+SoFurry → paste a token from `sofurry.com/settings/pat-create`. `config.migrate_sofurry_credentials()`
+deletes the old email/password/cookies on startup, and `SF_USERNAME`/`SF_PASSWORD` were removed from
+server.py's env map so they can't be re-seeded (the BUG-004 pattern from 2.14.6).
+
+**The client is two-surfaced on purpose.** The official API returns **no statistics at all** — no views,
+likes, comment counts or follower counts. Verified three independent ways (prose docs, the OpenAPI
+schema's 109 property names, live responses), so this is not the docs being unfinished. Analytics stay on
+login-free sofurry.com JSON, which serves published works — Adult included — anonymously. Reference +
+vendored `sofurry_openapi.yaml`/`sofurry_postman_collection.json` in `docs/reference/`.
+
+**Bug fixed en route: SF favourites were under-counted.** Stats used to be regex-scraped from the
+turbo-stream at `/s/{id}.data` assuming a value follows its key; that payload de-duplicates its value
+table, so small integers (exactly what like counts are) weren't re-emitted and the parse returned 0. Prod
+showed 10 subs / 51 favourites / max 16 — partial, not absent. Now reads clean JSON from
+`/api/submission/{id}`; a work reading `likes: 20` had been recording 0. **Historical snapshots stay
+wrong — only new polls are correct.** The old test never caught it because its fixture hand-wrote every
+value inline; `tests/test_sf_thumbnail.py` now pins a realistic de-duplicated payload.
+
+**Traps encoded in the client (each cost a probe):** `Accept: application/json` is mandatory or an
+unauthed call 302s to the login page with HTML; **HTTP status and body `statusCode` disagree** (an
+unsupported method returns HTTP 500 carrying `{"statusCode":400}`) so never branch on HTTP status alone;
+uploads must be ≥ 1 KB; rate limit is **60 req/min**, undocumented; **the API cannot delete submissions
+or content** (`_method` spoofing rejected too) so content is replaced in place and a *shrinking* chapter
+count leaves surplus items only removable in the SF UI — the poster logs the ids; and
+**`api.sofurry.com` is IP-blocked from the GCP VM** (SoFurry's own WAF rule against the GCP range —
+`e621.net` on the same Cloudflare returns 200 from that host), so **both** surfaces route through the CF
+Worker proxy.
+
+**Prior — 3.3.0 — Variants can carry their own description** (`artwork_reader.
 variant_description`), completing the variant work from 3.2.0. Precedence differs from tags on purpose: a variant's
 description beats the per-platform description map and is outranked only by an explicit `description_override`, because
 a per-platform description targets a different AUDIENCE while a variant is different CONTENT — if the platform map won,

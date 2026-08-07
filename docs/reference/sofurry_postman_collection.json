@@ -1,0 +1,1065 @@
+{
+    "variable": [
+        {
+            "id": "baseUrl",
+            "key": "baseUrl",
+            "type": "string",
+            "name": "string",
+            "value": "https:\/\/api.sofurry.com"
+        }
+    ],
+    "info": {
+        "name": "SoFurry API Documentation",
+        "_postman_id": "61e7aa0d-30cb-4755-85c4-f7173f73e678",
+        "description": "The SoFurry public API (v1) provides programmatic access to user data, submissions, content and site statistics.",
+        "schema": "https:\/\/schema.getpostman.com\/json\/collection\/v2.1.0\/collection.json"
+    },
+    "item": [
+        {
+            "name": "Endpoints",
+            "description": "",
+            "item": [
+                {
+                    "name": "GET \/",
+                    "request": {
+                        "url": {
+                            "host": "{{baseUrl}}",
+                            "path": "\/",
+                            "query": [],
+                            "raw": "{{baseUrl}}\/\/"
+                        },
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application\/json"
+                            },
+                            {
+                                "key": "Accept",
+                                "value": "application\/json"
+                            }
+                        ],
+                        "body": null,
+                        "description": ""
+                    },
+                    "response": []
+                },
+                {
+                    "name": "GET jwks",
+                    "request": {
+                        "url": {
+                            "host": "{{baseUrl}}",
+                            "path": "jwks",
+                            "query": [],
+                            "raw": "{{baseUrl}}\/jwks"
+                        },
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application\/json"
+                            },
+                            {
+                                "key": "Accept",
+                                "value": "application\/json"
+                            }
+                        ],
+                        "body": null,
+                        "description": ""
+                    },
+                    "response": []
+                }
+            ]
+        },
+        {
+            "name": "Folders",
+            "description": "\nManage your submission folders. Folders organise your own submissions into\nnamed groups. Every endpoint operates on the authenticated user's folders.",
+            "item": [
+                {
+                    "name": "List folders",
+                    "request": {
+                        "url": {
+                            "host": "{{baseUrl}}",
+                            "path": "v1\/folders",
+                            "query": [],
+                            "raw": "{{baseUrl}}\/v1\/folders"
+                        },
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application\/json"
+                            },
+                            {
+                                "key": "Accept",
+                                "value": "application\/json"
+                            }
+                        ],
+                        "body": null,
+                        "description": "Returns all folders belonging to the authenticated user."
+                    },
+                    "response": [
+                        {
+                            "header": [],
+                            "code": 200,
+                            "body": "[{\"id\": \"abc123\", \"name\": \"Sketches\"}, {\"id\": \"def456\", \"name\": \"WIPs\"}]",
+                            "name": ""
+                        }
+                    ]
+                },
+                {
+                    "name": "Create a folder",
+                    "request": {
+                        "url": {
+                            "host": "{{baseUrl}}",
+                            "path": "v1\/folder",
+                            "query": [],
+                            "raw": "{{baseUrl}}\/v1\/folder"
+                        },
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application\/json"
+                            },
+                            {
+                                "key": "Accept",
+                                "value": "application\/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\"name\":\"Sketches\"}"
+                        },
+                        "description": ""
+                    },
+                    "response": [
+                        {
+                            "header": [],
+                            "code": 201,
+                            "body": "{\"id\": \"abc123\", \"name\": \"Sketches\"}",
+                            "name": ""
+                        }
+                    ]
+                },
+                {
+                    "name": "Get a folder",
+                    "request": {
+                        "url": {
+                            "host": "{{baseUrl}}",
+                            "path": "v1\/folder\/:folder",
+                            "query": [],
+                            "raw": "{{baseUrl}}\/v1\/folder\/:folder",
+                            "variable": [
+                                {
+                                    "id": "folder",
+                                    "key": "folder",
+                                    "value": "abc123",
+                                    "description": "The hashid of the folder."
+                                }
+                            ]
+                        },
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application\/json"
+                            },
+                            {
+                                "key": "Accept",
+                                "value": "application\/json"
+                            }
+                        ],
+                        "body": null,
+                        "description": "Returns a single folder you own, with the hashids of the submissions it\ncontains."
+                    },
+                    "response": [
+                        {
+                            "header": [],
+                            "code": 200,
+                            "body": "{\"id\": \"abc123\", \"name\": \"Sketches\", \"thumbnailUrl\": \"https:\/\/cdn.sofurry.com\/...\", \"submissions\": [\"def456\", \"ghi789\"]}",
+                            "name": ""
+                        },
+                        {
+                            "header": [],
+                            "code": 403,
+                            "body": "{\"error\": \"Permission denied\"}",
+                            "name": ""
+                        }
+                    ]
+                },
+                {
+                    "name": "Rename a folder",
+                    "request": {
+                        "url": {
+                            "host": "{{baseUrl}}",
+                            "path": "v1\/folder\/:folder",
+                            "query": [],
+                            "raw": "{{baseUrl}}\/v1\/folder\/:folder",
+                            "variable": [
+                                {
+                                    "id": "folder",
+                                    "key": "folder",
+                                    "value": "abc123",
+                                    "description": "The hashid of the folder."
+                                }
+                            ]
+                        },
+                        "method": "PUT",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application\/json"
+                            },
+                            {
+                                "key": "Accept",
+                                "value": "application\/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\"name\":\"WIPs\"}"
+                        },
+                        "description": ""
+                    },
+                    "response": [
+                        {
+                            "header": [],
+                            "code": 200,
+                            "body": "{\"id\": \"abc123\", \"name\": \"WIPs\"}",
+                            "name": ""
+                        },
+                        {
+                            "header": [],
+                            "code": 403,
+                            "body": "{\"error\": \"Permission denied\"}",
+                            "name": ""
+                        }
+                    ]
+                },
+                {
+                    "name": "Delete a folder",
+                    "request": {
+                        "url": {
+                            "host": "{{baseUrl}}",
+                            "path": "v1\/folder\/:folder",
+                            "query": [],
+                            "raw": "{{baseUrl}}\/v1\/folder\/:folder",
+                            "variable": [
+                                {
+                                    "id": "folder",
+                                    "key": "folder",
+                                    "value": "abc123",
+                                    "description": "The hashid of the folder."
+                                }
+                            ]
+                        },
+                        "method": "DELETE",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application\/json"
+                            },
+                            {
+                                "key": "Accept",
+                                "value": "application\/json"
+                            }
+                        ],
+                        "body": null,
+                        "description": "Deletes the folder itself. The submissions inside are not deleted \u2014 they\nare only removed from the folder."
+                    },
+                    "response": [
+                        {
+                            "header": [],
+                            "code": 204,
+                            "body": "{}",
+                            "name": ""
+                        },
+                        {
+                            "header": [],
+                            "code": 403,
+                            "body": "{\"error\": \"Permission denied\"}",
+                            "name": ""
+                        }
+                    ]
+                },
+                {
+                    "name": "Add a submission to a folder",
+                    "request": {
+                        "url": {
+                            "host": "{{baseUrl}}",
+                            "path": "v1\/folder\/:folder\/:submission",
+                            "query": [],
+                            "raw": "{{baseUrl}}\/v1\/folder\/:folder\/:submission",
+                            "variable": [
+                                {
+                                    "id": "folder",
+                                    "key": "folder",
+                                    "value": "abc123",
+                                    "description": "The hashid of the folder."
+                                },
+                                {
+                                    "id": "submission",
+                                    "key": "submission",
+                                    "value": "def456",
+                                    "description": "The hashid of the submission."
+                                }
+                            ]
+                        },
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application\/json"
+                            },
+                            {
+                                "key": "Accept",
+                                "value": "application\/json"
+                            }
+                        ],
+                        "body": null,
+                        "description": "Both the folder and the submission must belong to you. Adding a submission\nthat is already in the folder is a no-op."
+                    },
+                    "response": [
+                        {
+                            "header": [],
+                            "code": 204,
+                            "body": "{}",
+                            "name": ""
+                        },
+                        {
+                            "header": [],
+                            "code": 403,
+                            "body": "{\"error\": \"Permission denied\"}",
+                            "name": ""
+                        }
+                    ]
+                },
+                {
+                    "name": "Remove a submission from a folder",
+                    "request": {
+                        "url": {
+                            "host": "{{baseUrl}}",
+                            "path": "v1\/folder\/:folder\/:submission",
+                            "query": [],
+                            "raw": "{{baseUrl}}\/v1\/folder\/:folder\/:submission",
+                            "variable": [
+                                {
+                                    "id": "folder",
+                                    "key": "folder",
+                                    "value": "abc123",
+                                    "description": "The hashid of the folder."
+                                },
+                                {
+                                    "id": "submission",
+                                    "key": "submission",
+                                    "value": "def456",
+                                    "description": "The hashid of the submission."
+                                }
+                            ]
+                        },
+                        "method": "DELETE",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application\/json"
+                            },
+                            {
+                                "key": "Accept",
+                                "value": "application\/json"
+                            }
+                        ],
+                        "body": null,
+                        "description": ""
+                    },
+                    "response": [
+                        {
+                            "header": [],
+                            "code": 204,
+                            "body": "{}",
+                            "name": ""
+                        },
+                        {
+                            "header": [],
+                            "code": 403,
+                            "body": "{\"error\": \"Permission denied\"}",
+                            "name": ""
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "name": "Site",
+            "description": "\nGeneral site configuration endpoints.",
+            "item": [
+                {
+                    "name": "Get Uploader Settings",
+                    "request": {
+                        "url": {
+                            "host": "{{baseUrl}}",
+                            "path": "v1\/uploader\/settings",
+                            "query": [],
+                            "raw": "{{baseUrl}}\/v1\/uploader\/settings"
+                        },
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application\/json"
+                            },
+                            {
+                                "key": "Accept",
+                                "value": "application\/json"
+                            }
+                        ],
+                        "body": null,
+                        "description": "Returns the site-wide upload configuration: allowed MIME types, per-category type\nlists and allowed extensions, max file sizes, and subscriber\/adult flags.\n\nThis is the canonical source for the **category** and **type** enumerations used by\nthe submission endpoints. Each entry in `categorySettings` exposes the integer\n`categoryId` and a `types` map of human label \u2192 integer type id. For reference, the\ncategory ids are: `10` Artwork, `20` Writing, `30` Photography, `40` Music,\n`50` Video, `60` 3D, `70` Game.\n\nTwo related enumerations are not returned here but are used by the submission\nendpoints \u2014 `rating` (content level): `0` Clean, `10` Mature, `20` Adult; and\n`privacy`: `1` Private, `2` Unlisted, `3` Public."
+                    },
+                    "response": [
+                        {
+                            "header": [],
+                            "code": 200,
+                            "body": "{\n  \"mimes\": {\"image\/jpeg\": [\"jpg\", \"jpeg\"], \"image\/png\": [\"png\"]},\n  \"categorySettings\": [\n    {\n      \"categoryName\": \"Artwork\",\n      \"categoryId\": 10,\n      \"types\": {\"Drawing\": 11, \"Comic\": 12, \"Animation\": 13, \"Other\": 19},\n      \"coverSupportedTypes\": [12],\n      \"allowedExtensions\": [\"jpg\", \"jpeg\", \"png\", \"gif\", \"webp\"],\n      \"allowedCustomDownloadExtensions\": [\"zip\"]\n    },\n    {\n      \"categoryName\": \"Writing\",\n      \"categoryId\": 20,\n      \"types\": {\"Short Story\": 21, \"Book\": 22, \"Other\": 29},\n      \"coverSupportedTypes\": [22],\n      \"allowedExtensions\": [\"txt\", \"html\"],\n      \"allowedCustomDownloadExtensions\": [\"pdf\", \"epub\"]\n    }\n  ],\n  \"plusSubscribed\": \"false\",\n  \"maxFileSizes\": {\n    \"regular\": {\"content\": 52428800, \"thumbnail\": 10485760, \"cover\": 10485760},\n    \"subscriber\": {\"content\": 52428800, \"thumbnail\": 10485760, \"cover\": 10485760}\n  },\n  \"adult\": \"false\"\n}",
+                            "name": ""
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "name": "Statistics",
+            "description": "\nStatistics information",
+            "item": [
+                {
+                    "name": "Get Global Statistics",
+                    "request": {
+                        "url": {
+                            "host": "{{baseUrl}}",
+                            "path": "v1\/statistics\/global",
+                            "query": [],
+                            "raw": "{{baseUrl}}\/v1\/statistics\/global"
+                        },
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application\/json"
+                            },
+                            {
+                                "key": "Accept",
+                                "value": "application\/json"
+                            }
+                        ],
+                        "body": null,
+                        "description": "Returns rounded public counts for uploads, content items, users, comments, statuses and total content views.\nAll values are rounded to the nearest 50."
+                    },
+                    "response": [
+                        {
+                            "header": [],
+                            "code": 200,
+                            "body": "{\n  \"sampleTime\": \"2024-01-15T12:00:00.000000Z\",\n  \"uploadCountTotal\": 1250000,\n  \"contentCountTotal\": 1380000,\n  \"userCountTotal\": 450000,\n  \"uploadCommentsCountTotal\": 8750000,\n  \"statusCountTotal\": 320000,\n  \"contentViewCountTotal\": 250000000,\n  \"precision\": \"All values rounded to nearest 50\"\n}",
+                            "name": ""
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "name": "Submissions",
+            "description": "\nEndpoints for creating, reading and updating submissions and their content.",
+            "item": [
+                {
+                    "name": "Create Submission",
+                    "request": {
+                        "url": {
+                            "host": "{{baseUrl}}",
+                            "path": "v1\/submission",
+                            "query": [],
+                            "raw": "{{baseUrl}}\/v1\/submission"
+                        },
+                        "method": "PUT",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application\/json"
+                            },
+                            {
+                                "key": "Accept",
+                                "value": "application\/json"
+                            }
+                        ],
+                        "body": null,
+                        "description": "Creates a new empty draft submission owned by the authenticated user and returns it.\nThe draft has no title, category or content yet \u2014 use the **Update Submission** and\n**Add File Content** \/ **Add Embed Content** endpoints to populate it, then set `privacy`\nto `3` (Public) via Update Submission to publish.\n\nTypical creation workflow:\n1. `PUT \/v1\/submission` \u2014 create the draft, note the returned `id`\n2. `POST \/v1\/submission\/{id}\/content` (file) or `\/content\/embed` \u2014 attach content\n3. `POST \/v1\/submission\/{id}` \u2014 set title, category, rating, tags and privacy"
+                    },
+                    "response": [
+                        {
+                            "header": [],
+                            "code": 201,
+                            "body": "{\n  \"id\": \"abc123\",\n  \"title\": \"New Submission\",\n  \"description\": null,\n  \"author\": \"Terra\",\n  \"category\": null,\n  \"type\": null,\n  \"rating\": null,\n  \"status\": 0,\n  \"privacy\": 1,\n  \"content\": [],\n  \"allowComments\": true,\n  \"allowDownloads\": true,\n  \"isWorkInProgress\": false,\n  \"isAdvert\": false,\n  \"optimize\": true,\n  \"pixelPerfect\": false,\n  \"onHold\": false,\n  \"onHoldReason\": null,\n  \"inReview\": false,\n  \"thumbUrl\": null,\n  \"coverUrl\": null,\n  \"artistTags\": [],\n  \"publishedAt\": null,\n  \"importedFrom\": null,\n  \"buyAtVendor\": null,\n  \"buyAtUrl\": null,\n  \"customDownloadUrl\": null,\n  \"folders\": []\n}",
+                            "name": ""
+                        },
+                        {
+                            "header": [],
+                            "code": 429,
+                            "body": "{\"statusCode\": 429, \"message\": \"Too Many Requests\", \"description\": \"You have reached your upload limit.\", \"errorCode\": 429}",
+                            "name": ""
+                        }
+                    ]
+                },
+                {
+                    "name": "Get Submission",
+                    "request": {
+                        "url": {
+                            "host": "{{baseUrl}}",
+                            "path": "v1\/submission\/:id",
+                            "query": [],
+                            "raw": "{{baseUrl}}\/v1\/submission\/:id",
+                            "variable": [
+                                {
+                                    "id": "id",
+                                    "key": "id",
+                                    "value": "abc123",
+                                    "description": "The hash ID of the submission."
+                                }
+                            ]
+                        },
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application\/json"
+                            },
+                            {
+                                "key": "Accept",
+                                "value": "application\/json"
+                            }
+                        ],
+                        "body": null,
+                        "description": "Returns the metadata and content list for a single submission identified by its hash ID."
+                    },
+                    "response": [
+                        {
+                            "header": [],
+                            "code": 200,
+                            "body": "{\n  \"id\": \"abc123\",\n  \"title\": \"My Artwork\",\n  \"description\": \"A beautiful piece of digital art.\",\n  \"author\": \"Terra\",\n  \"category\": 10,\n  \"type\": 11,\n  \"rating\": 0,\n  \"status\": 100,\n  \"privacy\": 3,\n  \"content\": [\n    {\n      \"contentId\": \"xyz789\",\n      \"title\": null,\n      \"description\": null,\n      \"body\": { \"url\": \"https:\/\/cdn.sofurry.com\/...\" },\n      \"position\": 0,\n      \"type\": \"file_submission\"\n    }\n  ],\n  \"allowComments\": true,\n  \"allowDownloads\": true,\n  \"isWorkInProgress\": false,\n  \"isAdvert\": false,\n  \"optimize\": true,\n  \"pixelPerfect\": false,\n  \"onHold\": false,\n  \"onHoldReason\": null,\n  \"inReview\": false,\n  \"thumbUrl\": \"https:\/\/t.sofurry.com\/thumb\/abc123\",\n  \"coverUrl\": null,\n  \"artistTags\": [\"dragon\", \"digital art\"],\n  \"publishedAt\": \"2024-01-15T12:00:00.000000Z\",\n  \"importedFrom\": null,\n  \"buyAtVendor\": null,\n  \"buyAtUrl\": null,\n  \"customDownloadUrl\": null,\n  \"folders\": []\n}",
+                            "name": ""
+                        },
+                        {
+                            "header": [],
+                            "code": 404,
+                            "body": "{\"statusCode\": 404, \"message\": \"Not Found\", \"description\": \"The requested resource could not be found.\", \"errorCode\": 404}",
+                            "name": ""
+                        }
+                    ]
+                },
+                {
+                    "name": "Update Submission",
+                    "request": {
+                        "url": {
+                            "host": "{{baseUrl}}",
+                            "path": "v1\/submission\/:submission",
+                            "query": [],
+                            "raw": "{{baseUrl}}\/v1\/submission\/:submission",
+                            "variable": [
+                                {
+                                    "id": "submission",
+                                    "key": "submission",
+                                    "value": "abc123",
+                                    "description": "The hash ID of the submission to update."
+                                }
+                            ]
+                        },
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application\/json"
+                            },
+                            {
+                                "key": "Accept",
+                                "value": "application\/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\"title\":\"My Updated Artwork\",\"category\":10,\"type\":11,\"rating\":0,\"privacy\":3,\"allowComments\":true,\"allowDownloads\":true,\"isWip\":false,\"optimize\":true,\"pixelPerfect\":false,\"isAdvert\":false,\"description\":\"Updated description.\",\"artistTags\":[\"dragon\",\"art\"],\"canPurchase\":false,\"purchaseAtVendor\":\"Gumroad\",\"purchaseAtUrl\":\"https:\\\/\\\/gumroad.com\\\/l\\\/abc\",\"contentOrder\":[\"xyz789\"]}"
+                        },
+                        "description": "Updates the metadata of an existing submission. The authenticated user must own the submission."
+                    },
+                    "response": [
+                        {
+                            "header": [],
+                            "code": 200,
+                            "body": "{\"id\":\"abc123\",\"title\":\"My Updated Artwork\",\"author\":\"Terra\",\"category\":10,\"type\":11,\"rating\":0,\"status\":100,\"privacy\":3,\"content\":[],\"allowComments\":true,\"allowDownloads\":true,\"isWorkInProgress\":false,\"isAdvert\":false,\"optimize\":true,\"pixelPerfect\":false,\"onHold\":false,\"onHoldReason\":null,\"inReview\":false,\"thumbUrl\":\"https:\/\/t.sofurry.com\/thumb\/abc123\",\"coverUrl\":null,\"artistTags\":[\"dragon\",\"art\"],\"publishedAt\":\"2024-01-15T12:00:00.000000Z\",\"importedFrom\":null,\"buyAtVendor\":null,\"buyAtUrl\":null,\"customDownloadUrl\":null,\"folders\":[]}",
+                            "name": ""
+                        },
+                        {
+                            "header": [],
+                            "code": 403,
+                            "body": "{\"statusCode\": 403, \"message\": \"Forbidden\", \"description\": \"You do not have permission to edit this submission.\", \"errorCode\": 403}",
+                            "name": ""
+                        },
+                        {
+                            "header": [],
+                            "code": 404,
+                            "body": "{\"statusCode\": 404, \"message\": \"Not Found\", \"description\": \"The requested resource could not be found.\", \"errorCode\": 404}",
+                            "name": ""
+                        },
+                        {
+                            "header": [],
+                            "code": 422,
+                            "body": "{\"message\": \"The given data was invalid.\", \"errors\": {\"title\": [\"The title field is required.\"]}}",
+                            "name": ""
+                        }
+                    ]
+                },
+                {
+                    "name": "Add File Content",
+                    "request": {
+                        "url": {
+                            "host": "{{baseUrl}}",
+                            "path": "v1\/submission\/:submission\/content",
+                            "query": [],
+                            "raw": "{{baseUrl}}\/v1\/submission\/:submission\/content",
+                            "variable": [
+                                {
+                                    "id": "submission",
+                                    "key": "submission",
+                                    "value": "abc123",
+                                    "description": "The hash ID of the submission."
+                                }
+                            ]
+                        },
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "multipart\/form-data"
+                            },
+                            {
+                                "key": "Accept",
+                                "value": "application\/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "formdata",
+                            "formdata": [
+                                {
+                                    "key": "description",
+                                    "value": "Main illustration",
+                                    "type": "text",
+                                    "description": "nullable An optional short description for this content item."
+                                },
+                                {
+                                    "key": "file",
+                                    "src": [],
+                                    "type": "file"
+                                }
+                            ]
+                        },
+                        "description": "Uploads a file and attaches it as a new content item on the given submission.\nUse `multipart\/form-data` encoding. The file extension determines the submission type\n(image, story, music, etc.) if one has not been set yet.\n\nAllowed extensions mirror the site upload settings \u2014 call **Get Uploader Settings** for the\ncurrent list."
+                    },
+                    "response": [
+                        {
+                            "header": [],
+                            "code": 201,
+                            "body": "{\n  \"contentId\": \"xyz789\",\n  \"title\": null,\n  \"description\": \"Main illustration\",\n  \"body\": { \"url\": \"https:\/\/cdn.sofurry.com\/content\/xyz789\" },\n  \"position\": 0,\n  \"type\": \"file_submission\"\n}",
+                            "name": ""
+                        },
+                        {
+                            "header": [],
+                            "code": 403,
+                            "body": "{\"statusCode\": 403, \"message\": \"Forbidden\", \"description\": \"You do not have permission to add content to this submission.\", \"errorCode\": 403}",
+                            "name": ""
+                        },
+                        {
+                            "header": [],
+                            "code": 404,
+                            "body": "{\"statusCode\": 404, \"message\": \"Not Found\", \"description\": \"The requested resource could not be found.\", \"errorCode\": 404}",
+                            "name": ""
+                        },
+                        {
+                            "header": [],
+                            "code": 422,
+                            "body": "{\"statusCode\": 422, \"message\": \"Unprocessable Entity\", \"description\": \"File extension is not allowed\", \"errorCode\": 422}",
+                            "name": ""
+                        }
+                    ]
+                },
+                {
+                    "name": "Update Submission Content",
+                    "request": {
+                        "url": {
+                            "host": "{{baseUrl}}",
+                            "path": "v1\/submission\/:submission\/content\/:submissionContent",
+                            "query": [],
+                            "raw": "{{baseUrl}}\/v1\/submission\/:submission\/content\/:submissionContent",
+                            "variable": [
+                                {
+                                    "id": "submission",
+                                    "key": "submission",
+                                    "value": "abc123",
+                                    "description": "The hash ID of the submission."
+                                },
+                                {
+                                    "id": "submissionContent",
+                                    "key": "submissionContent",
+                                    "value": "xyz789",
+                                    "description": "The hash ID of the content item to update."
+                                }
+                            ]
+                        },
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application\/json"
+                            },
+                            {
+                                "key": "Accept",
+                                "value": "application\/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\"title\":\"Chapter One\",\"description\":\"The beginning.\",\"binary\":\"Once upon a time...\"}"
+                        },
+                        "description": "Replaces the body of a specific content item within a submission (e.g. text chapter, image). The authenticated user must own the submission."
+                    },
+                    "response": [
+                        {
+                            "header": [],
+                            "code": 200,
+                            "body": "{\"contentId\":\"xyz789\",\"title\":\"Chapter One\",\"description\":\"The beginning.\",\"body\":{\"text\":\"Once upon a time...\"},\"position\":0,\"type\":\"file_submission\"}",
+                            "name": ""
+                        },
+                        {
+                            "header": [],
+                            "code": 403,
+                            "body": "{\"statusCode\": 403, \"message\": \"Forbidden\", \"description\": \"You do not have permission to edit this submission.\", \"errorCode\": 403}",
+                            "name": ""
+                        },
+                        {
+                            "header": [],
+                            "code": 404,
+                            "body": "{\"statusCode\": 404, \"message\": \"Not Found\", \"description\": \"The requested resource could not be found.\", \"errorCode\": 404}",
+                            "name": ""
+                        }
+                    ]
+                },
+                {
+                    "name": "GET v1\/submission\/{id}\/content\/{contentid}",
+                    "request": {
+                        "url": {
+                            "host": "{{baseUrl}}",
+                            "path": "v1\/submission\/:id\/content\/:contentid",
+                            "query": [],
+                            "raw": "{{baseUrl}}\/v1\/submission\/:id\/content\/:contentid",
+                            "variable": [
+                                {
+                                    "id": "id",
+                                    "key": "id",
+                                    "value": "architecto",
+                                    "description": "The ID of the submission."
+                                },
+                                {
+                                    "id": "contentid",
+                                    "key": "contentid",
+                                    "value": "architecto",
+                                    "description": ""
+                                }
+                            ]
+                        },
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application\/json"
+                            },
+                            {
+                                "key": "Accept",
+                                "value": "application\/json"
+                            }
+                        ],
+                        "body": null,
+                        "description": ""
+                    },
+                    "response": []
+                },
+                {
+                    "name": "GET v1\/submission\/{id}\/content\/{contentid}\/binary",
+                    "request": {
+                        "url": {
+                            "host": "{{baseUrl}}",
+                            "path": "v1\/submission\/:id\/content\/:contentid\/binary",
+                            "query": [],
+                            "raw": "{{baseUrl}}\/v1\/submission\/:id\/content\/:contentid\/binary",
+                            "variable": [
+                                {
+                                    "id": "id",
+                                    "key": "id",
+                                    "value": "architecto",
+                                    "description": "The ID of the submission."
+                                },
+                                {
+                                    "id": "contentid",
+                                    "key": "contentid",
+                                    "value": "architecto",
+                                    "description": ""
+                                }
+                            ]
+                        },
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application\/json"
+                            },
+                            {
+                                "key": "Accept",
+                                "value": "application\/json"
+                            }
+                        ],
+                        "body": null,
+                        "description": ""
+                    },
+                    "response": []
+                }
+            ]
+        },
+        {
+            "name": "Tags",
+            "description": "",
+            "item": [
+                {
+                    "name": "Get Tag Suggestions",
+                    "request": {
+                        "url": {
+                            "host": "{{baseUrl}}",
+                            "path": "v1\/tags\/suggest\/:query",
+                            "query": [],
+                            "raw": "{{baseUrl}}\/v1\/tags\/suggest\/:query",
+                            "variable": [
+                                {
+                                    "id": "query",
+                                    "key": "query",
+                                    "value": "drag",
+                                    "description": "The search prefix."
+                                }
+                            ]
+                        },
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application\/json"
+                            },
+                            {
+                                "key": "Accept",
+                                "value": "application\/json"
+                            }
+                        ],
+                        "body": null,
+                        "description": "Returns a list of tag strings matching the given query prefix. Useful for auto-completing tag search fields.\nNon-alphanumeric characters (except spaces and underscores) are stripped from the query."
+                    },
+                    "response": [
+                        {
+                            "header": [],
+                            "code": 200,
+                            "body": "[\"dragon\", \"dragoness\", \"dragon_art\"]",
+                            "name": ""
+                        },
+                        {
+                            "header": [],
+                            "code": 200,
+                            "body": "[]",
+                            "name": "No matches"
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "name": "Users",
+            "description": "\nAPIs for managing users",
+            "item": [
+                {
+                    "name": "POST v1\/user",
+                    "request": {
+                        "url": {
+                            "host": "{{baseUrl}}",
+                            "path": "v1\/user",
+                            "query": [],
+                            "raw": "{{baseUrl}}\/v1\/user"
+                        },
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application\/json"
+                            },
+                            {
+                                "key": "Accept",
+                                "value": "application\/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\"username\":\"Terra\",\"headline\":\"Digital artist\",\"location\":\"US\",\"show_birthdate\":false,\"show_likes\":true,\"website_link\":\"https:\\\/\\\/example.com\",\"website_title\":\"My Site\",\"donation_link\":\"https:\\\/\\\/ko-fi.com\\\/terra\",\"tab1\":\"Gallery\",\"clear_header\":\"0\"}"
+                        },
+                        "description": ""
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Get User",
+                    "request": {
+                        "url": {
+                            "host": "{{baseUrl}}",
+                            "path": "v1\/user\/me",
+                            "query": [],
+                            "raw": "{{baseUrl}}\/v1\/user\/me",
+                            "variable": [
+                                {
+                                    "id": "handle",
+                                    "key": "handle",
+                                    "value": "Terra",
+                                    "description": "The user handle. Omit to return the authenticated user."
+                                }
+                            ]
+                        },
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application\/json"
+                            },
+                            {
+                                "key": "Accept",
+                                "value": "application\/json"
+                            }
+                        ],
+                        "body": null,
+                        "description": "Returns the public profile for the given user handle. When `handle` is omitted the endpoint returns\nthe currently authenticated user's profile, which includes additional private fields."
+                    },
+                    "response": [
+                        {
+                            "header": [],
+                            "code": 200,
+                            "body": "{\n  \"handle\": \"Terra\",\n  \"username\": \"Terra\",\n  \"hasPremium\": true,\n  \"headline\": \"Digital artist\",\n  \"about\": \"Hi! I draw things.\",\n  \"commissionsOpen\": false,\n  \"isStaff\": false,\n  \"isAdult\": true,\n  \"verified\": true,\n  \"headerUrl\": \"https:\/\/cdn.sofurry.com\/header\/...\",\n  \"avatarUrl\": \"https:\/\/cdn.sofurry.com\/avatar\/...\"\n}",
+                            "name": ""
+                        },
+                        {
+                            "header": [],
+                            "code": 404,
+                            "body": "{\"statusCode\": 404, \"message\": \"Not Found\", \"description\": \"The requested resource could not be found.\", \"errorCode\": 404}",
+                            "name": ""
+                        }
+                    ]
+                },
+                {
+                    "name": "Get User",
+                    "request": {
+                        "url": {
+                            "host": "{{baseUrl}}",
+                            "path": "v1\/user\/:handle",
+                            "query": [],
+                            "raw": "{{baseUrl}}\/v1\/user\/:handle",
+                            "variable": [
+                                {
+                                    "id": "handle",
+                                    "key": "handle",
+                                    "value": "Terra",
+                                    "description": "The user handle. Omit to return the authenticated user."
+                                }
+                            ]
+                        },
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application\/json"
+                            },
+                            {
+                                "key": "Accept",
+                                "value": "application\/json"
+                            }
+                        ],
+                        "body": null,
+                        "description": "Returns the public profile for the given user handle. When `handle` is omitted the endpoint returns\nthe currently authenticated user's profile, which includes additional private fields."
+                    },
+                    "response": [
+                        {
+                            "header": [],
+                            "code": 200,
+                            "body": "{\n  \"handle\": \"Terra\",\n  \"username\": \"Terra\",\n  \"hasPremium\": true,\n  \"headline\": \"Digital artist\",\n  \"about\": \"Hi! I draw things.\",\n  \"commissionsOpen\": false,\n  \"isStaff\": false,\n  \"isAdult\": true,\n  \"verified\": true,\n  \"headerUrl\": \"https:\/\/cdn.sofurry.com\/header\/...\",\n  \"avatarUrl\": \"https:\/\/cdn.sofurry.com\/avatar\/...\"\n}",
+                            "name": ""
+                        },
+                        {
+                            "header": [],
+                            "code": 404,
+                            "body": "{\"statusCode\": 404, \"message\": \"Not Found\", \"description\": \"The requested resource could not be found.\", \"errorCode\": 404}",
+                            "name": ""
+                        }
+                    ]
+                },
+                {
+                    "name": "Get User Submissions",
+                    "request": {
+                        "url": {
+                            "host": "{{baseUrl}}",
+                            "path": "v1\/user\/:handle\/submissions",
+                            "query": [],
+                            "raw": "{{baseUrl}}\/v1\/user\/:handle\/submissions",
+                            "variable": [
+                                {
+                                    "id": "handle",
+                                    "key": "handle",
+                                    "value": "Terra%0A%0AEach+item+is+a+full+submission+object+%28see+%2A%2AGet+Submission%2A%2A%29.+The+%60category%60%2C%0A%60type%60%2C+%60rating%60%2C+%60status%60+and+%60privacy%60+fields+are+integers+%E2%80%94+%60category%60%3A+%6010%60+Artwork%2C%0A%6020%60+Writing%2C+%6030%60+Photography%2C+%6040%60+Music%2C+%6050%60+Video%2C+%6060%60+3D%2C+%6070%60+Game%3B+%60rating%60%3A%0A%600%60+Clean%2C+%6010%60+Mature%2C+%6020%60+Adult.",
+                                    "description": "The user handle."
+                                }
+                            ]
+                        },
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application\/json"
+                            },
+                            {
+                                "key": "Accept",
+                                "value": "application\/json"
+                            }
+                        ],
+                        "body": null,
+                        "description": "Returns a paginated list of submissions for the given user. When the handle belongs to the authenticated\nuser, private submissions are included."
+                    },
+                    "response": [
+                        {
+                            "header": [],
+                            "code": 200,
+                            "body": "{\n  \"data\": [\n    {\n      \"id\": \"abc123\",\n      \"title\": \"My Artwork\",\n      \"author\": \"Terra\",\n      \"category\": 10,\n      \"type\": 11,\n      \"rating\": 0,\n      \"thumbUrl\": \"https:\/\/t.sofurry.com\/thumb\/abc123\",\n      \"publishedAt\": \"2024-01-15T12:00:00.000000Z\"\n    }\n  ],\n  \"links\": {\"first\": \"...\", \"last\": \"...\", \"prev\": null, \"next\": \"...\"},\n  \"meta\": {\"current_page\": 1, \"last_page\": 10, \"per_page\": 15, \"total\": 142}\n}",
+                            "name": ""
+                        },
+                        {
+                            "header": [],
+                            "code": 404,
+                            "body": "{\"statusCode\": 404, \"message\": \"Not Found\", \"description\": \"The requested resource could not be found.\", \"errorCode\": 404}",
+                            "name": ""
+                        }
+                    ]
+                }
+            ]
+        }
+    ],
+    "auth": {
+        "type": "bearer",
+        "bearer": [
+            {
+                "key": "Authorization",
+                "type": "string"
+            }
+        ]
+    }
+}

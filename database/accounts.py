@@ -49,7 +49,7 @@ DEFAULT_CRED_CHECKS = {
     "ib": lambda s: bool(s.get("username") and s.get("password")),
     "fa": lambda s: bool(s.get("fa_username") and s.get("fa_cookie_a")),
     "ws": lambda s: bool(s.get("ws_api_key")),
-    "sf": lambda s: bool(s.get("sf_username") and s.get("sf_password")),
+    "sf": lambda s: bool(s.get("sf_api_token")),
     "sqw": lambda s: bool(s.get("sqw_username") and s.get("sqw_password")),
     "ao3": lambda s: bool((s.get("ao3_username") and s.get("ao3_password"))
                           or s.get("ao3_session_cookie")),
@@ -71,7 +71,7 @@ _HANDLE_KEYS = {
     "ib": ["username"],
     "fa": ["fa_username"],
     "ws": ["ws_username"],
-    "sf": ["sf_display_name", "sf_username"],
+    "sf": ["sf_display_name"],
     "sqw": ["sqw_author_username", "sqw_username"],
     "ao3": ["ao3_username"],
     "da": ["da_target_user"],

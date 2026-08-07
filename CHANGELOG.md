@@ -12,6 +12,91 @@ popup, which is usually the wrong thing to show — so write the blockquote.
 
 ---
 
+## [3.4.0] - 2026-08-07 - SoFurry moves to its official API
+
+> **SoFurry has an official API now, so PawPoller uses it — and no longer needs your SoFurry password.**
+> You'll need to reconnect SoFurry once: go to Settings → SoFurry, click the link to create a token on
+> SoFurry, and paste it in. Your old email and password are deleted automatically. Two bonuses come with
+> it: 2FA accounts work for the first time, and your SoFurry favourites were being under-counted — that's
+> fixed, so expect the number to jump.
+
+SoFurry shipped a public API (`https://api.sofurry.com`, docs at `developer.sofurry.com/dev-docs`) with
+Personal Access Tokens. This replaces the reverse-engineered write path wholesale.
+
+**Deleted from `clients/sf/client.py` (1131 → ~640 lines):** `login`, `_submit_2fa`, `check_session`,
+`ensure_logged_in`, `_bridge_session` (the OAuth2-PKCE bridge that minted a Remix `_session` from a
+Laravel login), `_ensure_api_session`, `_get_csrf_meta`, `_api_headers(csrf)`, `export_cookies`,
+`import_cookies`, `login_and_fetch_gallery`, `set_thumbnail`, `delete_submission`, `delete_content`.
+**This closes the 2FA gap permanently** — a PAT never logs in, so the unhandled `/auth/2fa` redirect
+stops existing as a failure mode.
+
+**The client is now deliberately two-surfaced.** `self._api` is the official API with a bearer token;
+`self._web` is sofurry.com with **no auth at all**. That split is forced: the official API returns **no
+statistics whatsoever** — no views, likes, comment counts, or follower counts. Verified three ways (prose
+docs, the OpenAPI schema's 109 property names, and live responses), so it is not an artifact of the docs
+being unfinished. Analytics therefore stay on sofurry.com, which serves published works — Adult included
+— anonymously. `docs/reference/sofurry_openapi.yaml` + `sofurry_postman_collection.json` are vendored
+because the docs 403 a bot User-Agent.
+
+**Fixed: SoFurry favourites were systematically under-counted.** `get_submission_detail` used to
+regex-scrape the turbo-stream payload at `/s/{id}.data` with `"key",(\d+)` — a pattern that assumes a
+value always sits immediately after its key. That payload is devalue-encoded with a **de-duplicated value
+table**: a large unique number like a view count is emitted fresh and matches, but a small integer already
+present in the table is not re-emitted, so the key is followed by the *next key* and the parse silently
+returned 0. Like counts are exactly those small integers. Prod showed the damage as partial rather than
+absent (10 submissions, 51 favourites, max 16 on any row). The fix is not a better regex — it reads
+`GET sofurry.com/api/submission/{id}`, which returns clean JSON anonymously. A work reading `likes: 20`
+had been recording 0. **Historical snapshots stay wrong; only new polls are correct.** `rating` is now
+populated too (it never was).
+
+**Gallery discovery replaced.** The old path scraped `/u/{handle}/gallery.data`, took *every* 8-character
+alphanumeric token, subtracted ids it knew weren't submissions, and passed the rest to the poller as
+unvalidated "candidates" — and an unauthenticated request there is SFW-filtered, so an adult gallery
+returned nothing at all. `GET /v1/user/{handle}/submissions` returns the real list, paginated, private
+works included.
+
+**Content is replaced in place, because the API cannot delete it.** `DELETE` is unsupported on both the
+submission and content routes, and Laravel `_method` spoofing is rejected too (the spoof is honoured,
+then routing refuses — a genuine absence, not a transport quirk). `update_content` replaces a content
+item's body directly, which is what both callers actually wanted: `replace_file` no longer appends-then-
+deletes, and the chapter refresh no longer leaves the submission briefly holding both copies. **Known
+limitation:** if a story's chapter count *shrinks*, the surplus items cannot be removed by any API call —
+the poster logs a WARNING naming the ids and the edit URL.
+
+**Credentials.** `sf_username` / `sf_password` / `sf_totp_code` / `sf_session_cookies` → `sf_api_token`.
+New `config.migrate_sofurry_credentials()` runs on startup from both entry points and **deletes** the dead
+fields (including `acct<N>_`-prefixed ones) rather than leaving a live password and session cookie in the
+vault for a credential nothing can spend. `SF_USERNAME`/`SF_PASSWORD` were also removed from server.py's
+env-seeding map — leaving them would re-create the keys the migration deletes on every restart, which is
+precisely the BUG-004 pattern that defeated the dashboard-password migration in 2.14.6. SoFurry was
+dropped from `auth/browser_login.py` (it harvested cookies nothing reads).
+
+**Gotchas found by probing, now encoded in the client:** `Accept: application/json` is mandatory (without
+it an unauthenticated call 302s to the login page with an HTML body instead of a JSON error); **HTTP
+status and body `statusCode` disagree** — an unsupported method returns HTTP 500 carrying
+`{"statusCode": 400}`, so `_check()` prefers the body's code and a client branching on HTTP status alone
+would retry a permanent 400 forever; uploads must be **>= 1 KB**; the API is rate limited to **60
+req/min**, undocumented. **`api.sofurry.com` is IP-blocked from the GCP VM** (Cloudflare 403 on every UA)
+while `e621.net` — also Cloudflare-fronted — returns 200 from the same host, so it is SoFurry's own WAF
+rule against the GCP range, not generic datacenter blocking. Both surfaces therefore route through the
+existing CF Worker proxy; wiring only the scrape half would have worked on desktop and died on the server.
+
+`comments_count` is now `None` when unknown rather than 0, and the poller carries the previous value
+forward — writing 0 would read as "every comment deleted" and then re-fire them all as new next cycle.
+
+**Tests.** `platforms.sf.auth` + `platforms.sf.discovery` rewritten for the token, plus a new
+`platforms.sf.stats` asserting the login-free stats path still parses. `tests/test_sf_thumbnail.py`
+rewritten (5 tests) — the old version *could not* have caught the favourites bug, because its fixture
+hand-wrote `"views",858,"likes",42` with every value fresh and inline, the one shape the broken regex
+handled; it now pins a realistic de-duplicated payload, plus the None-vs-0 comment-count contract. New
+`tests/test_sf_credential_migration.py` (6 tests) pins the vault scrub: it deletes every legacy field
+including `acct_<N>_`-namespaced ones, spares live tokens, is idempotent, and — since `sf_` is a short
+prefix — touches no other platform's credentials.
+
+**Not migrated:** the ad-hoc one-off scripts `tests/sf_smoke.py`, `live_test_sf.py`,
+`sf_proxy_post_smoke.py` and `check_cf_proxy_state.py` still reference the removed client API. They are
+historical incident scripts, not collected by pytest; real coverage lives in `testing/tests/platforms.py`.
+
 ## [3.3.0] - 2026-08-07 - Variants can carry their own description
 
 > **A variant can now have its own description, not just its own tags.** Post the SFW render of a piece and it goes out
