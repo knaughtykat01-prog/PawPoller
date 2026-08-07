@@ -308,6 +308,11 @@ class SoFurryClient:
                     "submission_id": str(sid),
                     "title": row.get("title") or "",
                     "thumbnail_url": row.get("thumbUrl") or "",
+                    # privacy travels with the row because the official listing
+                    # includes the owner's PRIVATE works, which the anonymous
+                    # stats endpoint cannot read. The poller needs to tell those
+                    # apart from junk ids rather than reporting them as junk.
+                    "privacy": _safe_int(row.get("privacy")),
                 })
 
             meta = body.get("meta") or {}

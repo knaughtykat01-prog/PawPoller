@@ -12,6 +12,38 @@ popup, which is usually the wrong thing to show — so write the blockquote.
 
 ---
 
+## [3.4.1] - 2026-08-07 - Two fixes found by verifying the 3.4.0 deploy on prod
+
+> **Two small SoFurry fixes.** Comment counts could come out blank on a work whose count couldn't be read,
+> and unpublished drafts were being logged as if they were broken. Both corrected. Nothing to do on your end.
+
+Neither was caught by the test suite or by the local live checks — both surfaced only from running a real
+poll cycle on the server and reading the resulting rows, which is why that step happened before calling
+3.4.0 done.
+
+**1. `comments_count` could be written as SQL NULL.** `get_submission_detail` returns `None` for an
+unreadable comment count (deliberately — see 3.4.0), and the poller resolves that to the previous value.
+But the resolved figure was only used for `insert_sf_snapshot`; `upsert_sf_submission` reads the `detail`
+dict, which still held `None`. So the snapshot got the right number while the submission row got NULL —
+2 of 17 rows after the 3.4.0 poll. `SUM()` silently skips NULLs, so this under-reported totals rather than
+erroring. The resolved value is now written back into `detail` before the upsert.
+
+**2. Unpublished works were reported as junk ids.** The official listing includes the owner's **private and
+unlisted** works — that is the point of an authenticated listing — but stats are read from the *anonymous*
+endpoint, which cannot see them. Each one therefore produced an empty detail and tripped the title guard,
+logging `"not a real submission — likely a gallery folder id"` seven times on the first prod poll. They are
+real submissions; there is simply nothing public to collect. `get_all_gallery_ids` now carries `privacy`
+per row, and the poller skips privacy 1/2 up front with an accurate message. A missing/0 privacy still
+falls through to the title guard, so an unexpected payload shape can never silently drop a work. The guard's
+own message was rewritten too — since 3.4.0 the ids come from an authoritative listing rather than a token
+scrape, so "likely a gallery folder id" is no longer a plausible cause.
+
+**Also (not code):** `api.sofurry.com` was added to the CF Worker's hostname allowlist and the Worker
+redeployed. The allowlist exists so a leaked `PROXY_SECRET` can't create an open proxy, and the official API
+is a **separate host** that is IP-blocked from datacenter ranges just like `sofurry.com`. Without the entry
+the server read stats fine but every authenticated call failed with `Target host not on allowlist`, which
+presents as a rejected token rather than a proxy problem.
+
 ## [3.4.0] - 2026-08-07 - SoFurry moves to its official API
 
 > **SoFurry has an official API now, so PawPoller uses it — and no longer needs your SoFurry password.**

@@ -213,10 +213,24 @@ async def run_sf_poll_cycle(account_id: int | None = None, force_full: bool = Fa
             logger.warning(
                 "SF: gallery listing failed (%s) — polling DB-known ids only", list_err)
             gallery = []
-        discovered = [s["submission_id"] for s in gallery]
+        # Skip the owner's PRIVATE/UNLISTED works. The official listing includes
+        # them (that is the point of an authenticated listing), but stats are read
+        # from the anonymous endpoint, which cannot see them — so polling one
+        # yields an empty detail that the title guard below would report as a junk
+        # id. There are no public stats to collect for an unpublished work anyway.
+        # privacy: 1=Private, 2=Unlisted, 3=Public; 0/absent → poll it and let the
+        # title guard decide, so an unexpected shape never silently drops a work.
+        non_public = [s["submission_id"] for s in gallery
+                      if s.get("privacy") in (1, 2)]
+        discovered = [s["submission_id"] for s in gallery
+                      if s["submission_id"] not in set(non_public)]
         known = [r["submission_id"] for r in sf_queries.get_all_sf_submissions(conn)]
         submission_ids = list(dict.fromkeys(discovered + known))  # de-dup, keep order
         stats["submissions_found"] = len(submission_ids)
+        if non_public:
+            logger.info(
+                "SF: skipping %d unpublished work(s) — private/unlisted submissions "
+                "have no public stats to collect", len(non_public))
         logger.info("SF: %d submissions to poll (%d discovered, %d known)",
                     len(submission_ids), len(discovered), len(known))
 
@@ -255,16 +269,24 @@ async def run_sf_poll_cycle(account_id: int | None = None, force_full: bool = Fa
                     comments = sf_queries.get_sf_previous_comments_count(conn, sub_id) or 0
                     logger.debug("SF: comment count unavailable for %s — kept %d",
                                  sub_id, comments)
+                # Write the resolved value BACK into detail: upsert_sf_submission
+                # reads the dict, not this local, so leaving it None would store a
+                # NULL comments_count on the submission row while the snapshot got
+                # the right number. (Caught on the 3.4.0 prod poll — 2 NULL rows.)
+                detail["comments_count"] = comments
 
-                # Reject discovery false-positives: an id that doesn't resolve to a
-                # titled submission must not be persisted as a junk 0-view row.
-                # Known works keep their row (the views==0 guard below handles their
-                # transient failures).
+                # Reject anything that doesn't resolve to a titled submission — it
+                # must not be persisted as a junk 0-view row. Since 3.4.0 the ids
+                # come from the authoritative API listing rather than a token
+                # scrape, so this should now only fire for a work the anonymous
+                # stats endpoint can't read (deleted, or made private between the
+                # listing and this fetch). Known works keep their row; the views==0
+                # guard below handles their transient failures.
                 if not (detail.get("title") or "").strip():
                     if not sf_queries.get_sf_submission(conn, sub_id):
                         logger.warning(
-                            "SF: skipping newly-discovered id %s with no title "
-                            "(not a real submission — likely a gallery folder id)",
+                            "SF: skipping %s — no public detail returned "
+                            "(deleted, or unpublished since the listing)",
                             sub_id,
                         )
                         continue

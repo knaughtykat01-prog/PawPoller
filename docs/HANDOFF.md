@@ -1,7 +1,9 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-08-07
-**Current version (master):** 3.4.0 — **SoFurry moved to its official API.** SoFurry shipped a public API
+**Current version (master):** 3.4.1 — **SoFurry moved to its official API** (3.4.0), plus two fixes found by running a real poll on prod rather than trusting the deploy: `comments_count` could be written as SQL **NULL** (the resolved fallback reached the snapshot but not the submission row — 2 of 17 rows; `SUM()` skips NULLs so it under-reported silently), and the owner's **private/unlisted** works — which the authenticated listing returns but the anonymous stats endpoint cannot read — were logged as junk "gallery folder" ids. The listing now carries `privacy` and the poller skips 1/2 up front. **Also: `api.sofurry.com` had to be added to the CF Worker allowlist** and the Worker redeployed; without it the server read stats fine but every authenticated call failed with `Target host not on allowlist`, which looks exactly like a rejected token.
+
+**3.4.0 —** SoFurry shipped a public API
 (`api.sofurry.com`) with Personal Access Tokens, so the entire reverse-engineered auth stack is gone:
 Laravel login scrape, the OAuth2-PKCE bridge, `X-CSRF-Token` threading, cookie import/export, and the
 unhandled 2FA dead end. `clients/sf/client.py` went 1131 → ~640 lines and **the 2FA gap is closed
