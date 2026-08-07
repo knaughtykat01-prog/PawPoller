@@ -338,6 +338,11 @@ export default {
     const ALLOWED_HOSTS = new Set([
       'sofurry.com',
       'www.sofurry.com',
+      // SoFurry's official API (3.4.0). Separate host, and it is blocked from
+      // datacenter IPs just like sofurry.com — without this entry the server
+      // can still read stats (sofurry.com) but every authenticated call fails
+      // with "Target host not on allowlist", which looks like a bad token.
+      'api.sofurry.com',
       'deviantart.com',
       'www.deviantart.com',
       'archiveofourown.org',
