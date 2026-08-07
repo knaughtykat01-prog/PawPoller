@@ -123,7 +123,7 @@ The dashboard binds to `127.0.0.1:8420` by default (loopback only), reachable at
 |----------|------|------|------|-------|
 | Inkbunny | Username/password | Yes | Yes | Official API; chaptered stories + art |
 | FurAffinity | Session cookies (a/b) | Yes | Yes | Scraping (no official API); posting is desktop-only |
-| SoFurry | Email/password | Yes | Yes | Scraping; chaptered |
+| SoFurry | Personal Access Token | Yes | Yes | Official API v1 for posting; login-free JSON for stats (the API exposes none); chaptered |
 | Weasyl | API key | Yes | Yes\* | Official API (\*posting in validation) |
 | AO3 | Username/password | Yes | Yes | Rails CSRF login; work skins; chaptered |
 | SquidgeWorld | Username/password | Yes | Yes | Scraping; work skins; chaptered |

@@ -386,7 +386,7 @@ Startup sequence in detail:
 _ENV_TO_SETTINGS = {
     "IB_USERNAME":      "username",
     "FA_COOKIE_A":      "fa_cookie_a",
-    "SF_USERNAME":      "sf_username",
+    "SF_API_TOKEN":     "sf_api_token",
     "TELEGRAM_BOT_TOKEN": "telegram_bot_token",
     "CF_WORKER_URL":     "cf_worker_url",
     # ... 25+ mappings total
@@ -2706,9 +2706,10 @@ _ENV_TO_SETTINGS = {
     "FA_COOKIE_B":        "fa_cookie_b",
     # Weasyl
     "WS_API_KEY":         "ws_api_key",
-    # SoFurry
-    "SF_USERNAME":        "sf_username",
-    "SF_PASSWORD":        "sf_password",
+    # SoFurry — PAT only since 3.4.0. SF_USERNAME/SF_PASSWORD are deliberately
+    # NOT mapped: seeding them would re-create the keys
+    # migrate_sofurry_credentials() deletes, on every restart.
+    "SF_API_TOKEN":       "sf_api_token",
     "SF_DISPLAY_NAME":    "sf_display_name",
     # SquidgeWorld
     "SQW_USERNAME":       "sqw_username",
@@ -3367,7 +3368,7 @@ Pollers read via config.get_settings() each cycle
 | Inkbunny | Username/password → SID | `username`, `password` | IB account credentials |
 | FurAffinity | Browser cookies | `fa_username`, `fa_cookie_a`, `fa_cookie_b` | Export cookies 'a' and 'b' from browser DevTools |
 | Weasyl | API key | `ws_api_key` | Generate at weasyl.com/control/apikeys |
-| SoFurry | Email/password → session | `sf_username` (email!), `sf_password`, `sf_display_name` | SF account email + profile handle |
+| SoFurry | Official API v1 bearer token | `sf_api_token`, `sf_display_name` (derived) | Create a Personal Access Token at sofurry.com/settings/pat-create (Settings → Developer). No password; 2FA accounts work, since PawPoller never logs in. The handle comes back from `GET /v1/user/me`, so it is not typed |
 | SquidgeWorld | User/pass + CSRF | `sqw_username`, `sqw_password`, `sqw_target_user` | Login account + tracked user's username |
 | AO3 | User/pass + CSRF **or** session cookie | `ao3_username`, `ao3_password`, `ao3_target_user`, `ao3_session_cookie` (optional, takes precedence) | Login account + tracked user. **Cookie mode** (2.18.8+): paste `_otwarchive_session` from your browser to bypass the per-IP login throttle — recommended on datacenter/server deployments |
 | DeviantArt | App client-credentials (OAuth2) | `da_client_id`, `da_client_secret`, `da_target_user` | Register a DA app (Confidential) at the developer portal; use its client_id/secret. (Legacy `da_cookie` still works as a fallback when no app credentials are set.) |
@@ -3386,12 +3387,13 @@ Pollers read via config.get_settings() each cycle
 
 **`test_sf_proxy.py`** — SoFurry proxy diagnostic script. Tests the CF Worker proxy by performing a full login + gallery fetch sequence. Useful for debugging SF proxy issues in isolation. Requires environment variables:
 ```
-SF_USERNAME=your@email.com
-SF_PASSWORD=your_password
+SF_API_TOKEN=your-personal-access-token
 SF_DISPLAY_NAME=YourProfileHandle
 CF_WORKER_URL=https://your-worker.workers.dev
 CF_WORKER_KEY=your-secret-key
 ```
+(Pre-3.4.0 this script drove a login; there is no login any more. `test_sf_direct.py`
+below tested cookie persistence and is obsolete for the same reason.)
 Run: `python test_sf_proxy.py`
 
 **`test_sf_direct.py`** — SoFurry direct login + cookie persistence test. Tests direct login (no proxy) and validates that session cookies can be exported, persisted, and restored. Confirms the `remember_web_*` cookie is set with `"remember": "on"`. Reads credentials from `settings.json`. Run: `python test_sf_direct.py`
@@ -3418,9 +3420,10 @@ Also viewable via `GET /api/poll_log` or the Telegram `/status` command.
 
 | Problem | Cause | Solution |
 |---------|-------|----------|
-| SF login fails | Using username instead of email | SoFurry login requires the **email address**, not the display name. Set `sf_username` to your email. |
-| SF login works locally but fails on server | Datacenter IP blocked | Configure CF Worker proxy (`CF_WORKER_URL`, `CF_WORKER_KEY`). SF blocks non-residential IPs. The poller auto-detects: if `cf_worker_url` is set, it uses the proxy; otherwise it uses direct login with cookie persistence. |
-| SF "restored session is valid" then fails | Saved cookies expired | The `remember_web_*` cookie lasts ~30 days. After expiry, `check_session()` fails and the app does a fresh login automatically. No manual action needed. |
+| SF calls return 401 | Token revoked, expired, or partially pasted | Mint a fresh Personal Access Token at sofurry.com/settings/pat-create and re-paste it. Tokens are long JWTs — make sure the whole string was copied. Note they carry an expiry (a year by default), and expiry looks exactly like a bad paste. |
+| SF authenticated calls fail with "Target host not on allowlist" | `api.sofurry.com` missing from the CF Worker allowlist | Add it to `ALLOWED_HOSTS` in `deploy/cf-worker.js` and redeploy (`cd deploy && npx wrangler deploy`). Stats keep working because they use `sofurry.com`, so this presents as a rejected token rather than a proxy fault. |
+| SF works locally but fails on the server | Datacenter IP blocked | Configure the CF Worker proxy (`CF_WORKER_URL`, `CF_WORKER_KEY`). SoFurry blocks datacenter ranges on **both** `sofurry.com` and `api.sofurry.com` — its own WAF rule, not generic Cloudflare blocking. Both surfaces route through the proxy automatically when the worker is configured. |
+| SF favourites look too low on old data | Pre-3.4.0 parsing bug | Favourites were under-counted before 3.4.0 (see CHANGELOG). Historical snapshots stay wrong; only polls from 3.4.0 onward are correct, so expect a step change rather than a corrected history. |
 | FA polls return no data | Cookies expired | FA cookies (`cookie_a`, `cookie_b`) expire periodically. Re-export them from browser DevTools → Application → Cookies. |
 | FA polls return 403 | Cookies incomplete | Both `cookie_a` AND `cookie_b` are required. Check both are set. |
 | DA polls fail / no data | Bad or missing app credentials | Check `da_client_id` / `da_client_secret` (register a Confidential DA app) and that `da_target_user` is the correct tracked username. The official OAuth2 API works from any IP (2.47.0), so the datacenter-IP/CF-proxy fix no longer applies to DA polling. |
@@ -3541,7 +3544,7 @@ Supported platforms for posting:
 | Inkbunny | `InkbunnyPoster` | Username/password → SID | Yes | Yes | Yes | any |
 | FurAffinity | `FurAffinityPoster` | Cookie a + Cookie b | Yes | Yes | Yes | desktop |
 | Weasyl | `WeasylPoster` | API key | Yes | Yes | No | any |
-| SoFurry | `SoFurryPoster` | Email/password + CSRF | Yes | Yes | Yes | any |
+| SoFurry | `SoFurryPoster` | Personal Access Token (bearer) | Yes | Yes | Yes | any |
 | SquidgeWorld | `SquidgeWorldPoster` | Author user/pass + CSRF | Yes | Yes | Yes | any |
 | AO3 | `AO3Poster` | Username/password OR session cookie | Yes | Yes | Yes | any |
 | DeviantArt | `DAPoster` | OAuth2 access token | Yes | Yes (limited) | No | any |
@@ -3866,16 +3869,16 @@ First match wins, restricted to png/jpg/jpeg/gif. The IB poster forwards `packag
 
 #### SoFurry (`posting/platforms/sofurry.py`)
 
-**Auth**: Reuses `SoFurryClient` with email/password + CSRF token.
+**Auth**: Reuses `SoFurryClient` with a bearer Personal Access Token (3.4.0).
 
-**Network mode** — `SoFurryClient` is dual-mode:
-- **Local desktop / residential IP**: direct httpx, with cookie persistence (`sf_session_cookies` saved across runs, ~30 day lifetime via `remember_web_*` cookie). Auto-detects: if `cf_worker_url` is empty in settings, uses direct mode.
-- **GCP server / datacenter IP**: routed through the CloudflareProxyTransport because SF blocks datacenter IPs at the edge. Set `cf_worker_url` + `cf_worker_key` in settings to enable. Cookie persistence is disabled in proxy mode because CF Workers rotate egress IPs and SF pins sessions to the IP that performed login.
+**Network mode** — `SoFurryClient` is dual-mode (3.4.0: no cookies involved either way — a PAT is stateless, so nothing is persisted or pinned):
+- **Local desktop / residential IP**: direct httpx. Used when `cf_worker_url` is empty.
+- **GCP server / datacenter IP**: **both** HTTP surfaces route through CloudflareProxyTransport, because SoFurry blocks datacenter ranges on `sofurry.com` AND `api.sofurry.com`. `api.sofurry.com` must be in the Worker's `ALLOWED_HOSTS` (`deploy/cf-worker.js`) — without it, stats still work and every authenticated call fails, which reads as a bad token.
 
-**Post flow** (3-step REST, very fast — typically 2-3 seconds end-to-end):
-1. `PUT /ui/submission` — create empty submission, returns `submission_id`
-2. `POST /ui/submission/{id}/content` — upload file content (multipart)
-3. `POST /ui/submission/{id}` — set metadata (title, tags, rating, **privacy**)
+**Post flow** (3-step, official API v1):
+1. `PUT /v1/submission` — create an empty private draft, returns `id`
+2. `POST /v1/submission/{id}/content` — upload file content (multipart, **>= 1 KB**)
+3. `POST /v1/submission/{id}` — set metadata (title, tags, rating, **privacy**; 3 publishes)
 
 **Privacy levels** (SF supports a real first-class draft state):
 - `privacy=1` **Private** — owner-only, hidden from feeds and search, only the logged-in author can see it. Used for draft mode.

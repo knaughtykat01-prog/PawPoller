@@ -38,6 +38,16 @@ falls through to the title guard, so an unexpected payload shape can never silen
 own message was rewritten too — since 3.4.0 the ids come from an authoritative listing rather than a token
 scrape, so "likely a gallery folder id" is no longer a plausible cause.
 
+**Setup docs updated for the new SoFurry flow.** `docs/SETUP.md`'s credentials table, the README platform
+table, and `.env.example` all still told people to supply a SoFurry email and password — which no longer
+exists as a concept. They now describe minting a Personal Access Token, and say plainly that no password is
+needed and that 2FA accounts work because PawPoller never logs in. `SF_USERNAME`/`SF_PASSWORD` in
+`.env.example` became `SF_API_TOKEN`. In `documentation_guide.md`: the credential table, the poster
+capability table, the env-seed map (twice), the network-mode and post-flow sections, and the `test_sf_proxy.py`
+env block. Three troubleshooting rows were replaced — "SF login fails / using username instead of email" and
+the `remember_web_*` cookie-expiry row describe machinery that no longer exists — with rows for a rejected
+token, the CF Worker allowlist symptom, and the fact that historical favourites stay under-counted.
+
 **Also (not code):** `api.sofurry.com` was added to the CF Worker's hostname allowlist and the Worker
 redeployed. The allowlist exists so a leaked `PROXY_SECRET` can't create an open proxy, and the official API
 is a **separate host** that is IP-blocked from datacenter ranges just like `sofurry.com`. Without the entry

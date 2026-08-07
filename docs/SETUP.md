@@ -484,7 +484,7 @@ Short version per platform:
 |----------|-------|-----------------|
 | Inkbunny | Username + password | Your IB account — and tick "Enable API access" in IB's account settings |
 | FurAffinity | `a` and `b` cookies | Log in to FA, DevTools → Application → Cookies → copy `a` and `b` |
-| SoFurry | Email + password | Your SF account |
+| SoFurry | Personal Access Token | sofurry.com → Settings → Developer → New token ([direct link](https://sofurry.com/settings/pat-create)). Paste the token; your profile handle is read from it automatically. **No password needed** — and 2FA accounts work fine, because PawPoller never logs in |
 | Weasyl | API key | weasyl.com → Settings → API keys → generate |
 | AO3 | Username + password | Your AO3 account |
 | SquidgeWorld | Username + password | Your SqW account |
