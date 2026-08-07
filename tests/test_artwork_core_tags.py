@@ -202,6 +202,51 @@ def test_variant_without_own_tags_inherits_for_posting(tmp_path, monkeypatch):
     assert pkg.rating == "adult"                # falls back to the parent
 
 
+def test_variant_description_falls_back_to_the_work():
+    assert ar.variant_description("parent blurb", {"label": "Sketch"}) == "parent blurb"
+    assert ar.variant_description("parent blurb", {"label": "X", "description": "   "}) == "parent blurb"
+
+
+def test_variant_description_overrides_when_present():
+    assert ar.variant_description("parent", {"description": "just the lines"}) == "just the lines"
+
+
+def test_variant_description_beats_the_per_platform_description(tmp_path, monkeypatch):
+    """A variant is different CONTENT, not a different audience. If a
+    per-platform description won, an SFW render would go out captioned with the
+    parent's explicit blurb — the same failure the variant tag split prevents."""
+    d = _folder(tmp_path, {"core": ["anthro"]})
+    (d / "sfw.png").write_bytes(b"\x89PNG\r\n\x1a\n")
+    meta = json.loads((d / "masterpiece.json").read_text(encoding="utf-8"))
+    meta["description"] = "explicit parent blurb"
+    meta["descriptions"] = {"fa": "explicit FA-specific blurb"}
+    meta["variants"] = [{"key": "sfw", "label": "SFW", "image": "sfw.png",
+                         "description": "clean version, nothing rude"}]
+    (d / "masterpiece.json").write_text(json.dumps(meta), encoding="utf-8")
+    monkeypatch.setattr(ar, "get_artwork_archive_path", lambda: tmp_path)
+
+    art = ar.load_artwork("Piece")
+    parent = ar.build_artwork_package(art, "fa")
+    variant = ar.build_artwork_package(art, "fa", variant_key="sfw")
+    assert "explicit FA-specific blurb" in parent.description
+    assert "clean version, nothing rude" in variant.description
+    assert "explicit" not in variant.description
+
+
+def test_description_override_still_outranks_a_variant(tmp_path, monkeypatch):
+    d = _folder(tmp_path, {"core": ["anthro"]})
+    (d / "v.png").write_bytes(b"\x89PNG\r\n\x1a\n")
+    meta = json.loads((d / "masterpiece.json").read_text(encoding="utf-8"))
+    meta["variants"] = [{"key": "v", "label": "V", "image": "v.png",
+                         "description": "variant blurb"}]
+    (d / "masterpiece.json").write_text(json.dumps(meta), encoding="utf-8")
+    monkeypatch.setattr(ar, "get_artwork_archive_path", lambda: tmp_path)
+    art = ar.load_artwork("Piece")
+    pkg = ar.build_artwork_package(art, "ib", variant_key="v",
+                                   description_override="explicit override")
+    assert "explicit override" in pkg.description
+
+
 def test_unknown_variant_key_is_an_error_not_a_silent_primary(tmp_path, monkeypatch):
     _folder(tmp_path, {"core": ["anthro"]})
     monkeypatch.setattr(ar, "get_artwork_archive_path", lambda: tmp_path)

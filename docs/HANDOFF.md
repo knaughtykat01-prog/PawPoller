@@ -1,7 +1,27 @@
 # PawPoller Session Handoff
 
 **Last updated:** 2026-08-07
-**Current version (master):** 3.2.0 — **Core/auxiliary tag split + per-platform tag budgets + tags on variants.**
+**Current version (master):** 3.3.0 — **Variants can carry their own description** (`artwork_reader.
+variant_description`), completing the variant work from 3.2.0. Precedence differs from tags on purpose: a variant's
+description beats the per-platform description map and is outranked only by an explicit `description_override`, because
+a per-platform description targets a different AUDIENCE while a variant is different CONTENT — if the platform map won,
+an SFW render would ship captioned with the parent's explicit blurb. +4 tests (24 in `tests/test_artwork_core_tags.py`).
+
+**First-persona retag COMPLETE (2026-08-07, DATA not code — nothing in this repo).** 30 works were tagged from the
+images and applied to the prod archive. Median 34 tags (was 16); **all 30 now pass FA validation**, including two that
+previously could not post to FA at all. Working artifacts (proposals, per-piece observations, confidence notes,
+corrections) live OUTSIDE this repo in the workspace `art_audit/retag_2026-08/`; per-file backups are `.bak.2026080*`
+beside every touched `masterpiece.json`, so the whole pass is reversible. **Method note worth reusing: read the
+existing work descriptions BEFORE tagging** — they settled several attributions the images alone could not, and named
+an artist that had no in-frame signature. A few works are deliberately left unattributed where neither image nor text
+resolved them; guessing is worse than a blank. **Nothing has been pushed to live sites.** Remaining: 133 artworks still
+on the legacy flat `default` tag list.
+
+**NOTE — this GitHub repo is PUBLIC** (`visibility: PUBLIC`, checked 2026-08-07), which contradicts the older
+"repo stays private, publish a cleaned copy via `deploy/make_public.py`" assumption. Anything committed here is
+world-readable; keep persona, character and third-party artist detail in the workspace, not in the repo.
+
+**Prior — 3.2.0 — Core/auxiliary tag split + per-platform tag budgets + tags on variants.**
 A work's `tags` dict keeps its platform keys and gains three RESERVED ones: `core` (the 20-25 that matter, in priority
 order — artist, species, character, mainstream kink, act, explicit anatomy), `auxiliary` (the long tail), and the
 legacy flat `default`, still read so nothing needs migrating up front. **Why a split and not just ordering:**

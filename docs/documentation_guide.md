@@ -6170,8 +6170,16 @@ parent). Before 3.2.0 a variant had only `key`/`label`/`image`/`rating`, so an
 catalogue holds SFW / Censored / NSFW / Nude / Cum / Sketch / Lined / WIP-GIF
 variants and three already carry a rating different from their parent.
 
+A variant may also carry its own **`description`** (3.3.0,
+`variant_description()`). Precedence here is deliberately NOT the same as for
+tags: a variant's description beats the per-platform description map, and is
+outranked only by an explicit `description_override`. A per-platform
+description targets a different AUDIENCE; a variant is different CONTENT. If
+the platform map won, an SFW render would go out captioned with the parent's
+explicit blurb — the failure the variant split exists to prevent.
+
 `build_artwork_package(..., variant_key=…)` is what actually posts one: it
-swaps in the variant's image, rating and tags. Note `ArtworkInfo` did not carry
+swaps in the variant's image, rating, tags and description. Note `ArtworkInfo` did not carry
 `variants` at all before 3.2.0 — they existed only in `list_artworks()`'s dict
 output — so the field had to be added to the dataclass or variant tags would
 have been unreachable from the posting path. An unknown key raises rather than

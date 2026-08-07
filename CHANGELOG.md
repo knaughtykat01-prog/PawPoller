@@ -12,6 +12,24 @@ popup, which is usually the wrong thing to show — so write the blockquote.
 
 ---
 
+## [3.3.0] - 2026-08-07 - Variants can carry their own description
+
+> **A variant can now have its own description, not just its own tags.** Post the SFW render of a piece and it goes out
+> with the SFW blurb — before this it inherited the parent's, which on an explicit piece is exactly the wrong caption.
+> A variant with no description of its own still inherits, so nothing changes unless you write one.
+
+Completes the variant work started in 3.2.0. `artwork_reader.variant_description(work_description, variant)` returns the
+variant's own `description` when it has one, else the work's.
+
+**Precedence is deliberately different from tags.** A variant's description beats the per-platform description map, and
+is outranked only by an explicit `description_override` argument. The reasoning: a per-platform description targets a
+different AUDIENCE, a variant is different CONTENT. If the platform map won, an SFW render would be captioned with the
+parent's explicit blurb — the same failure mode the variant tag split exists to prevent. There is a test named for it.
+
++4 tests (24 in `tests/test_artwork_core_tags.py`).
+
+---
+
 ## [3.2.0] - 2026-08-07 - Core vs auxiliary tags, per-platform tag budgets, and tags on variants
 
 > **Tags are now split into "core" and "auxiliary".** Core is the 20-25 that matter most, in priority order —

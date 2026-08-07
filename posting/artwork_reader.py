@@ -106,6 +106,21 @@ def variant_tags(artwork_tags: dict, variant: dict) -> dict:
     return {k: list(v) for k, v in (artwork_tags or {}).items()}
 
 
+def variant_description(artwork_description: str, variant: dict) -> str:
+    """The effective description for one variant.
+
+    A variant may carry its own ``description``; without one it inherits the
+    work's. Unlike the per-platform description map, a variant's description
+    beats everything except an explicit ``description_override`` — because a
+    variant is different CONTENT, not a different audience. Letting a
+    per-platform description win here would caption an SFW render with the
+    parent's explicit blurb, which is the exact failure the variant tag split
+    was built to stop.
+    """
+    own = (variant or {}).get("description")
+    return own if isinstance(own, str) and own.strip() else artwork_description
+
+
 def fit_tags_to_platform(tags: list[str], platform: str,
                          core_count: int | None = None) -> list[str]:
     """Trim a tag list to what `platform` will actually accept.
@@ -361,6 +376,11 @@ def build_artwork_package(
 
     if description_override:
         description = description_override
+    elif variant is not None and variant_description("", variant):
+        # A variant's own description describes different CONTENT, so it beats
+        # the per-platform map (see variant_description). Only an explicit
+        # override outranks it.
+        description = variant_description("", variant)
     elif platform in artwork.descriptions_by_platform:
         description = artwork.descriptions_by_platform[platform]
     elif platform == "bsky" and artwork.descriptions_by_platform.get("announcement"):
